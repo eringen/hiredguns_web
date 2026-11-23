@@ -74,3 +74,24 @@ checks existing files; it refuses to overwrite modified references.
 Downloaded and extracted material and generated output are Git-ignored.
 
 Source: [Internet Archive development files](https://archive.org/details/hired-guns-cd-32-dev-files).
+
+## Running the game
+
+From the project root, run `make preview` to build and serve single-player at
+`http://localhost:8000/`. For an existing build, run
+`python3 tools/serve.py --bind 0.0.0.0 --port 8000`.
+
+For multiplayer, build the same assets with `make preview-build`, install the
+Node dependency with `npm ci`, then run:
+
+```sh
+PUBLIC_ORIGIN=https://hiredguns.negis.family npm run multiplayer
+```
+
+This serves both game modes on port 8013. Forward HTTP and WebSocket requests
+to the same process. The host chooses Multiplayer, player count, game type,
+characters and mission. Open the copied invite in each additional browser.
+Each player controls one character and sees the selected squad's viewports.
+In View, Space fires, Shift+Up selects hand grenade power, and Shift+Down
+pulls a block or reloads from compatible ammunition. Campaign progress belongs
+to the room. Empty rooms expire after two minutes. Disk saves are single-player.

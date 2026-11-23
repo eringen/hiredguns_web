@@ -23,6 +23,7 @@ body:has(#front:popover-open){background:#000}
 #front canvas[hidden]{display:none}
 #front canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #front button:nth-of-type(1){top:39%}#front button:nth-of-type(2){top:50%}#front button:nth-of-type(3){top:61%}#front button:nth-of-type(4){top:79.5%}
+#front #multiplayer{top:90%;height:9%}#front #multiplayer canvas{position:static;width:100%;height:100%;background:transparent}
 #front-status{position:absolute;bottom:0;left:8%;margin:0;background:black}
 body.mission{max-width:var(--game-width);background:black;color:#d5cdbb}
 main{gap:0;background:#000}
@@ -53,6 +54,7 @@ body.mission header h1{display:none}body.mission header{justify-content:flex-end
 <canvas width="640" height="400" aria-hidden="true" hidden></canvas>
 <button aria-label="Training" data-group="Training"></button><button aria-label="Full campaign game" data-group="Campaign"></button>
 <button aria-label="Short action game" data-group="Action"></button><button aria-label="Continue a saved game" id="continue"></button>
+<button id="multiplayer" aria-label="Multiplayer"><canvas width="448" height="36" aria-hidden="true"></canvas></button>
 <span id="front-status" role="status"></span></div>
 <dialog id="death" aria-label="Game over" tabindex="-1"><img src="art/death.png" width="320" height="212" alt="Squad lost. Press a key or tap to return to the main menu."></dialog>
 <dialog id="briefing" aria-label="Mission briefing"><canvas width="640" height="400"></canvas></dialog>
@@ -66,6 +68,7 @@ body.mission header h1{display:none}body.mission header{justify-content:flex-end
 <canvas id="mission-screen" width="640" height="400" aria-hidden="true"></canvas>
 <div id="world" aria-label="Campaign locations" hidden></div>
 <select id="level" hidden aria-label="Mission"></select><input id="music" type="checkbox" checked hidden>
+<button id="room-game" hidden>Game type</button><button id="room-size" hidden>Players</button><button id="create-room" hidden>Create room</button>
 <button id="prev-map" hidden>Previous map</button><button id="next-map" hidden>Next map</button>
 <button id="squad-control" hidden>Squad</button><button id="toggle-person" hidden>Select character</button><button id="mission-music" hidden>Menu music</button>
 <input id="save-name" maxlength="30" hidden aria-label="Saved game description"><button id="write-slot" hidden>Save game</button><button id="cancel-slots" hidden>Cancel</button><button id="load-slot" hidden>Load saved game</button>

@@ -36,7 +36,7 @@ reference-build: build/preview/HiredGuns.hdf
 
 preview-build:
 	mkdir -p build/preview
-	cp web/index.html web/front.mjs web/mission-menu.mjs web/world-map.mjs web/sky.mjs web/field.mjs web/fire-sprites.mjs web/hud.mjs web/preview.mjs web/original.html web/original.mjs src/chatter.mjs src/psionics.mjs src/combat.mjs src/machinery.mjs src/dts.mjs src/level.mjs src/inventory.mjs src/samples.mjs build/preview/
+	cp web/index.html web/multiplayer.mjs web/front.mjs web/mission-menu.mjs web/world-map.mjs web/sky.mjs web/field.mjs web/fire-sprites.mjs web/hud.mjs web/preview.mjs web/original.html web/original.mjs src/chatter.mjs src/psionics.mjs src/combat.mjs src/controls.mjs src/effects.mjs src/machinery.mjs src/dts.mjs src/level.mjs src/inventory.mjs src/samples.mjs build/preview/
 	$(PYTHON) tools/build-levels.py
 
 preview: preview-build

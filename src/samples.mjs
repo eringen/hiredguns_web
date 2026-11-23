@@ -6,10 +6,9 @@ export function variedPeriod(period) {
 export function movementAudio(samplesByName) {
   let context;
   const buffers = new Map();
-  return function play(kind, period, channel, volume=63) {
+  function play(kind, period, channel, volume=63) {
     if (!window.AudioContext || !period || volume<=0) return;
-    context ??= new AudioContext();
-    if (context.state === 'suspended') context.resume().catch(()=>{});
+    play.unlock();
     if (!buffers.has(kind)) {
       const raw = samplesByName[kind];
       const buffer = context.createBuffer(1, raw.length, 22050);
@@ -25,7 +24,14 @@ export function movementAudio(samplesByName) {
     voice.connect(gain);gain.connect(context.destination);
     voice.onended=()=>{voice.disconnect();gain.disconnect();};
     voice.start();
+  }
+  play.unlock=()=>{
+    if (!window.AudioContext) return;
+    context ??= new AudioContext();
+    if (context.state === 'suspended' || context.state === 'interrupted') context.resume().catch(()=>{});
   };
+  play.ready=()=>context?.state==='running';
+  return play;
 }
 
 // Main.s update_background_sfx uses one looping Paula channel for the squad.

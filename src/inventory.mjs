@@ -6,7 +6,7 @@ export function inventorySession(level, equipment, squad = [0,1,2,3], sound=()=>
   const ground = new Map();
   const bodies=new Map();
   let armed=0;
-  const players = level.starts.map((position, index) => {
+  const players = level.starts.slice(0,squad.length).map((position, index) => {
     const character = characters[squad[index]];
     const pack = character.pack.map(item => ({...item}));
     return {...position, dir:0, character, pack, held:null, fitness:character.fitness, fallDamage:0, waterFall:0};

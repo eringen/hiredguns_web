@@ -1,3 +1,5 @@
+import {advanceEffects,syncEffects} from './effects.mjs';
+import {fieldAction,keyAction,followLeader} from './controls.mjs';
 import {agePowers} from './psionics.mjs';
 import {fieldAnimation,fieldInk} from './field.mjs';
 import {missionMenu} from './mission-menu.mjs';
@@ -91,12 +93,21 @@ function slots() {
 }
 
 async function start() {
-  if(performance.getEntriesByType('navigation')[0]?.type==='reload') {
+  const room=new URLSearchParams(location.search).get('room');
+  let onlineCommand;
+  if(!room && performance.getEntriesByType('navigation')[0]?.type==='reload') {
     history.replaceState(null,'',location.pathname);
     sessionStorage.removeItem('hiredguns.frontVisited');
   }
   const catalog = JSON.parse(new TextDecoder().decode(await load('levels.json')));
-  const id = Number(new URLSearchParams(location.search).get('map')) || 43;
+  const query=new URLSearchParams(location.search);
+  let roomConfig;
+  if(room && !room.startsWith('new')){
+    const response=await fetch('/rooms/'+encodeURIComponent(room),{cache:'no-store'});
+    if(!response.ok){location.replace('/');return;}
+    roomConfig=await response.json();
+  }
+  const id=roomConfig?.map ?? (Number(query.get('map')) || 43);
   const entry = catalog.find(m => m.id === id) ?? catalog.find(m => m.id === 43);
   const selector = document.querySelector('#level');
   for (const group of ['Training','Campaign','Action','Development']) {
@@ -120,6 +131,7 @@ async function start() {
   const deploy = document.querySelector('#deploy');
   let missionUI;
   const params = new URLSearchParams(location.search);
+  let onlineSize=roomConfig?.ids.length || (room ? Number(room.split('-')[1] || 4) : 0);
   const campaignKey='hiredguns.campaign.v1';
   const origin=catalog.find(m=>m.locationType===2).id;
   const freshCampaign=()=>({current:origin,completed:[]});
@@ -146,10 +158,10 @@ async function start() {
     if(campaignMode && campaign.squad) {draft=[...campaign.squad];updateRoster();}
     selector.onchange();
   }
-  const ids = (params.get('squad') ?? '').split(',').map(Number);
-  const deployed = ids.length === 4 && new Set(ids).size === 4 && ids.every(n=>equipment.characters[n]);
+  const ids = roomConfig?.ids ?? (room && !params.has('squad') ? [0,1,2,3].slice(0,onlineSize) : (params.get('squad') ?? '').split(',').map(Number));
+  const deployed = ids.length === (onlineSize || 4) && new Set(ids).size === ids.length && ids.every(n=>equipment.characters[n]);
   const squad = deployed ? ids : campaignMode && campaign.squad ? campaign.squad : [0,1,2,3];
-  if(deployed && campaignMode && !reachable(entry)) {location.search='?campaign=1';return;}
+  if(!room && deployed && campaignMode && !reachable(entry)) {location.search='?campaign=1';return;}
   let draft = [...squad];
   const frontMusic=new Audio('front.mp3');
   frontMusic.loop=true;
@@ -161,7 +173,7 @@ async function start() {
   const musicToggle = document.querySelector('#music');
   musicToggle.checked=sessionStorage.getItem('hiredguns.music')!=='off';
   const briefing=document.querySelector('#briefing');
-  const showBriefing=deployed && params.get('restore')!=='1';
+  const showBriefing=!room && deployed && params.get('restore')!=='1';
   if(showBriefing){
     briefing.showModal();
     briefing.oncancel=e=>e.preventDefault();
@@ -219,7 +231,9 @@ async function start() {
   setup.addEventListener('close',syncMusic);
   setup.addEventListener('menuchange',syncMusic);
   function updateRoster() {missionUI?.draw();}
-  missionUI=await missionMenu(setup,load,()=>({draft,characters:equipment.characters,catalog,campaign,campaignMode,locked:!!(campaignMode && campaign.squad)}));
+  missionUI=await missionMenu(setup,load,()=>({draft,size:onlineSize || 4,online:!!onlineSize,chooseSquad(size,group){
+    onlineSize=size;draft=[];campaign=freshCampaign();selectGroup(group);missionUI.open(false,true);syncMusic();
+  },characters:equipment.characters,catalog,campaign,campaignMode,locked:!!(campaignMode && campaign.squad)}));
   function browseSaves(saving,cancel){
     const slots=Array.from({length:5},(_,i)=>{
       try{
@@ -240,6 +254,11 @@ async function start() {
       }});
   }
   deploy.onclick = () => {
+    if(onlineSize && !room){
+      if(draft.length!==onlineSize || !selector.value || selector.selectedOptions[0]?.disabled) return;
+      location.search=new URLSearchParams({room:'new-'+onlineSize,map:selector.value,squad:draft.join(',')});
+      return;
+    }
     const destination = new URL(location.href);
     destination.searchParams.delete('restore');destination.searchParams.delete('result');
     if(campaignMode) {
@@ -252,6 +271,7 @@ async function start() {
     else location.assign(destination);
   };
   function openMenu(group) {
+    onlineSize=0;
     selector.value = entry.id;
     draft = group==='Training'?[1,2,6,7]:typeof group==='string'?[]:[...squad];
     if(typeof group==='string') selectGroup(group);
@@ -277,6 +297,10 @@ async function start() {
     for (const choice of choices) {
       choice.onpointerenter = () => choice.focus();
       choice.onclick = () => {
+        if(choice.id==='multiplayer'){
+          opening.leave(()=>{front.hidePopover();missionUI.multiplayer();});
+          return;
+        }
         if (!choice.dataset.group) {
           front.hidePopover();browseSaves(false,()=>{setup.close();front.showPopover();choices[3].focus();});
           return;
@@ -444,7 +468,7 @@ async function start() {
       else motor.stop(door.key);
     }
   };
-  const unlock=()=>{ambient.unlock();motor.unlock();syncAtmos();};
+  const unlock=()=>{sound.unlock();ambient.unlock();motor.unlock();syncAtmos();};
   document.addEventListener('pointerdown',unlock);
   document.addEventListener('keydown',unlock);
   document.addEventListener('visibilitychange',syncAtmos);
@@ -470,6 +494,7 @@ async function start() {
   document.addEventListener('visibilitychange',syncScroll);
   function scrollChatter(){
     if(scrollAnimation) return;
+    if(room && !radioLine) return;
     if(!radioLine){radioLine=radio.take()??'';radioX=320;}
     if(!radioLine) return;
     ticker.setAttribute('aria-label',radioLine);
@@ -568,7 +593,16 @@ async function start() {
     button.oncontextmenu=e=>e.preventDefault();
     button.onpointerdown=e=>{
       if(e.button!==0 && e.button!==2) return;
-      e.preventDefault();unlock();selected=i;
+      e.preventDefault();
+      if(room) {
+        button.focus({preventScroll:true});
+        const code=region(e)?.[e.button===2?6:5];
+        const special={15:'Pickup hands',22:'Pickup pack',23:'Drop',16:'Follow',20:'Center map',17:'Use held',19:'Item info',21:'Store'};
+        const action=code>=26 && code<=29 ? 'Throw '+(29-code) : special[code] ?? actions[code] ?? ['View','Store','DTS','Stats'][code-9];
+        if(action) onlineCommand?.(i,action,true);
+        return;
+      }
+      unlock();selected=i;
       const zone=region(e),code=zone?.[e.button===2?6:5],panel=panels[i];
       if(!p.fitness || p.exited) {draw();return;}
       if(code>=9 && code<=12) tab(i,code-9);
@@ -583,7 +617,7 @@ async function start() {
       else if(actions[code]) {act(actions[code],true);button.onpointermove(e);return;}
       draw();button.onpointermove(e);
     };
-    button.onclick=e=>{if(!e.detail){selected=i;draw();}};
+    button.onclick=e=>{if(!room && !e.detail){selected=i;draw();}};
     document.querySelector('main').append(button);
     return button;
   });
@@ -739,7 +773,7 @@ async function start() {
     fieldViews[i].capture(hasField);fieldViews[i].scroll(fieldClock);
   }
   function draw(worldChanged=true){
-    radio.observe();syncAtmos();
+    if(!room) {radio.observe();syncAtmos();}
     if(inventory.armed===4 && lastCore!==4) radio.armed();
     lastCore=inventory.armed;
     players.forEach((p,i)=>{
@@ -757,7 +791,7 @@ async function start() {
       hud.draw(button.firstChild.getContext('2d'),scene,p,panel.mode,panel.index,inventory.weight(p),panel,i,warningClock);
     });
     const p = players[selected];
-    finishMission();
+    if(!room) finishMission();
     const previous = panels[selected].index;
     if(pack.length!==p.pack.length || p.pack.some((item,i)=>pack.options[i].text!==itemName(item)))
       pack.replaceChildren(...p.pack.map(item=>new Option(itemName(item))));
@@ -813,95 +847,8 @@ async function start() {
       scrollMap(panel,panel.x+(action==='Right')-(action==='Left'),panel.y+(action==='Back')-(action==='Forward'));
       draw();return;
     }
-    if(action==='Throw power'){
-      if(p.held && equipment.items[p.held.id].category===21){
-        panel.throwPower=((panel.throwPower??3)+1)%4;
-        draw(false);
-      }
-      return;
-    }
-    if(action==='Fire'){
-      const grenade=p.held && equipment.items[p.held.id].category===21;
-      draw(!!(grenade?battle.throwGrenade(p,panel.throwPower):battle.use(p,panel.index)));
-      return;
-    }
     if(!automatic && p.inTeam && leader!==who && !['Use','Pull'].includes(action)){leader=who;radio.bank(21+who);}
-    if(action==='Pull'){
-      const [dx,dy]=directions[p.dir],x=p.x+dx,y=p.y+dy;
-      if(x>=0 && y>=0 && x<level.width && y<level.depth && (level.cell(x,y,p.floor).terrain&256)) machines.shove(p,dx,dy,true);
-      else if(inventory.reload(p)===null) sound('reload',380,who%2);
-      draw();return;
-    }
-    if(action==='Use'){
-      const [dx,dy]=directions[p.dir],x=p.x+dx,y=p.y+dy;
-      if(x>=0 && x<level.width && y>=0 && y<level.depth) {
-        const front=level.cell(x,y,p.floor).terrain;
-        if(front&(256|8)) {
-          if(front&256) machines.shove(p,dx,dy);
-          else machines.panel(x,y,p.floor);
-          draw();return;
-        }
-      }
-      const useHeld=!mouse || !p.held || equipment.items[p.held.id].category!==21;
-      draw(!!(useHeld && battle.use(p,panel.index)));return;
-    }
-    if(action==='Left' || action==='Right') {p.shot=null;p.lockFrames=0;}
-    if(action==='Left') p.dir=(p.dir+3)%4;
-    if(action==='Right') p.dir=(p.dir+1)%4;
-    if(['Forward','Back','Strafe right','Strafe left'].includes(action)){
-      const dir=(p.dir+({'Forward':0,'Back':2,'Strafe right':1,'Strafe left':3})[action])%4;
-      const [dx,dy]=directions[dir],x=p.x+dx,y=p.y+dy;
-      if(x<0 || y<0 || x>=level.width || y>=level.depth) {draw(false);return;}
-      const here=level.cell(p.x,p.y,p.floor),below=p.floor?level.cell(p.x,p.y,p.floor-1):null;
-      const tree=p.floor>=2 && level.cell(p.x,p.y,p.floor-2).blockType===4;
-      const supported=players.some(q=>q!==p && !q.exited && q.fitness && q.x===p.x && q.y===p.y && q.floor===p.floor-1);
-      if(here.floorType===null && below?.blockType==null && !tree && !supported && !((here.terrain&4) && ((here.terrain>>>17)&3)>=2)) {draw(false);return;}
-      let z=p.floor;
-      if((here.terrain&32) && (here.terrain>>>28)===8+dir) {
-        if(z+1>=level.height || (level.cell(p.x,p.y,z+1).terrain&67)) {draw(false);return;}
-        z++;
-      } else if(below?.blockType===[18,19,16,17][dir] && level.cell(x,y,z).floorType===null && !(level.cell(x,y,z-1).terrain&66)) z--;
-      const destination=level.cell(x,y,z);
-      const occupied=players.find(other=>other!==p && other.fitness && !other.exited && other.x===x && other.y===y && other.floor===z);
-      if(automatic && (occupied || battle.at(x,y,z) || destination.blockType!==null || (destination.floorType===null && (!z || !(level.cell(x,y,z-1).terrain&66))))) return;
-      if(destination.blockType===3) {
-        p.exited=true;sound('Teleport',683,who%2);
-        draw();return;
-      }
-      if(occupied && z===p.floor && !(destination.terrain&66)) {
-        // All four squad members share the browser's control method (swap_players).
-        Object.assign(occupied,{x:p.x,y:p.y});Object.assign(p,{x,y});
-        if(!(destination.terrain&4)) radio.bank(who);
-        sound('step',p.character.stepPeriod,who%2);draw();return;
-      }
-      if(!occupied && !battle.at(x,y,z) && !(destination.terrain&66)){
-        machines.pad(p.x,p.y,p.floor,true);
-        p.x=x; p.y=y;p.floor=z;
-        machines.pad(x,y,p.floor,false);
-        sound('step',p.character.stepPeriod,who%2);
-      } else {
-        if(occupied) radio.bank(who);
-        if(destination.blockType===6 && destination.contents%4===0 && destination.contents/4<level.width*level.depth*level.height) {
-          const k=destination.contents/4,tx=k%level.width,ty=Math.floor(k/level.width)%level.depth,tz=Math.floor(k/(level.width*level.depth));
-          if(level.cell(tx,ty,tz).blockType===null && !players.some(q=>q.fitness && !q.exited && q.x===tx && q.y===ty && q.floor===tz)) {
-            machines.pad(p.x,p.y,p.floor,true);
-            Object.assign(p,{x:tx,y:ty,floor:tz});machines.pad(tx,ty,tz,false);sound('Teleport',683,who%2);
-            draw();return;
-          }
-        }
-        if(destination.blockType===2) p.fitness=Math.min(65535,p.fitness+(destination.contents&65535));
-        else {
-          machines.bump(x,y,z,p);
-          if(p.lockFrames) {
-            const {key,used}=p.lockNotice;
-            feedback.textContent=key?(used?'Used ':'Requires ')+equipment.items[key].name:'Locked.';
-          }
-        }
-        sound('bump',428,who%2);
-        draw(false);return;
-      }
-    }
-    draw();
+    draw(fieldAction({level,inventory,machines,battle,equipment,sound,bank:n=>radio.bank(n),notice:text=>feedback.textContent=text},who,panel,action,mouse,automatic));
   }
   if(showBriefing){
     // Start the simulation and audio only after the visible briefing is dismissed.
@@ -909,6 +856,103 @@ async function start() {
     await new Promise(requestAnimationFrame);
     loadingMusic?.pause();
     briefing.close();
+  }
+  function animateHUD(){
+    if(paused()) {ambient.stop();return;}
+    warningClock=(warningClock+1)&63;fieldClock=(fieldClock+1)%90;
+    let redrawWorld=false;
+    players.forEach((p,i)=>{
+      if(!room && p.fitness && !p.exited) p.gruntFrames=Math.min(100,(p.gruntFrames??0)+1);
+      const worldEffect=p.psiFlash===1 || p.monsterAttackFrames===1;
+      if((!room && agePowers(p)) || worldEffect) redrawWorld=true;
+      const effectChanged=advanceEffects(p,equipment);
+      const fieldChanged=panels[i].mode===0 && p.fitness && !p.exited && fieldViews[i].scroll(fieldClock);
+      const repaint=effectChanged || fieldChanged || (p.poison && (warningClock&31)===0);
+      const panel=panels[i];
+      if(repaint) hud.draw(buttons[i].firstChild.getContext('2d'),scenes[i],p,panel.mode,panel.index,inventory.weight(p),panel,i,warningClock);
+    });
+    if(redrawWorld) draw();
+    syncAtmos();
+    scrollChatter();
+  }
+  setInterval(animateHUD,20);
+  if(room) setInterval(()=>{
+    if(paused()) return;
+    panels.forEach((panel,i)=>{
+      if(panel.mode===2 && players[i].fitness && !scannerType(players[i]))
+        hud.drawStatic(buttons[i].firstChild.getContext('2d'),i,true);
+    });
+  },120);
+  if(room) {
+    const {connectRoom}=await import('./multiplayer.mjs');
+    document.body.classList.add('mission');
+    for(const element of [menu,setup,document.querySelector('#equipment')]) element.inert=true;
+
+    let radioStart=-1,sharedPause=false;
+    const deadlines=players.map(()=>({}));
+    onlineCommand=connectRoom(room,{map:id,ids},players.map(p=>p.character.name),state=>{
+      selected=state.slot;
+      if(state.map!==id || state.generation!==(roomConfig?.generation ?? 0)){location.reload();return;}
+      battle.restore(state.battle);
+      machines.restore(state.machines);
+      machines.movingLifts.clear();
+      for(const index of state.movingLifts) machines.movingLifts.add(level.lifts[index]);
+      const drowning=players.map(p=>p.drowningFrames);
+      inventory.restore(state.inventory);
+      players.forEach((p,i)=>{
+        p.drowningFrames=drowning[i];
+        syncEffects(p,state.effects[i],state.tick,deadlines[i]);
+      });
+      state.squad.forEach(({x,y,floor,dir,mode,index,held,pack,fitness,throwPower},i)=>{
+        const p=players[i];
+        panels[i].throwPower=throwPower;
+        Object.assign(p,{x,y,floor,dir,held,pack,fitness});
+        panels[i].index=index;
+        if(panels[i].mode!==mode) tab(i,mode);
+        if(mode===2) scrollMap(panels[i],state.maps[i].x,state.maps[i].y);
+        for(const floor of state.maps[i].revealed){
+          const area=level.width*level.depth;
+          for(let k=floor*area;k<(floor+1)*area;k++) panels[i].seen.add(k);
+        }
+      });
+      if(state.phase==='paused' && !sharedPause){
+        sharedPause=true;setup.inert=false;setup.showModal();missionUI.onlinePause();
+        resume.onclick=()=>onlineCommand(selected,'Resume');
+        back.onclick=()=>location.assign('/');
+      }else if(sharedPause && state.phase==='play'){
+        sharedPause=false;setup.close();setup.inert=true;
+      }
+      if(state.phase==='map' && (!setup.open || campaign.current!==state.campaign.current)){
+        campaign=state.campaign;campaignMode=true;
+        draft=[...ids];selectGroup('Campaign');setup.inert=selected!==0;
+        if(!setup.open) setup.showModal();missionUI.open(false,false);
+        deploy.onclick=()=>onlineCommand(selected,'Deploy '+selector.value);
+        document.querySelector('#travel').onclick=()=>onlineCommand(selected,'Travel '+selector.value);
+      }
+      if(state.phase==='over' && !outcome){
+        if(players.every(p=>!p.fitness)) finishMission();
+        else {
+          outcome=state.campaign?'Campaign complete':'Mission complete';
+          setup.inert=false;
+          setup.showModal();missionUI.result(outcome);
+          back.onclick=()=>location.assign('/');
+        }
+      }
+
+      if(state.line && state.line.start!==radioStart){
+        radioStart=state.line.start;
+        scrollAnimation?.cancel();scrollAnimation=null;
+        radioLine=state.line.text;radioX=320-(state.tick-radioStart);
+        scrollChatter();
+      }
+      draw(state.worldChanged);
+      syncAtmos();
+      if(!paused() && sound.ready()) for(const event of state.events){
+        const name=event.name || effects[event.sample];
+        if(name) sound(name,event.period,event.channel??0,event.key===undefined?event.volume??63:machineryVolume(event.key,63));
+      }
+    });
+    return;
   }
   if(!restoredBattle) battle.start();
   for(const label of ['Left','Forward','Back','Right','Use','Pull']){
@@ -930,9 +974,7 @@ async function start() {
     const mode=['v','s','d','t'].indexOf(e.key.toLowerCase());
     if(mode>=0 && !e.ctrlKey && !e.metaKey && !e.altKey){tab(selected,mode);draw();return;}
     if(e.altKey || e.ctrlKey || e.metaKey) return;
-    const shifted=panels[selected].mode===0 && e.shiftKey &&
-      {ArrowLeft:'Strafe left',ArrowRight:'Strafe right',ArrowDown:'Pull',ArrowUp:'Throw power'}[e.key];
-    const action=shifted || {' ':'Fire',e:'Use',p:'Pull',ArrowLeft:'Left',ArrowRight:'Right',ArrowUp:'Forward',ArrowDown:'Back'}[e.key];
+    const action=keyAction(e.key,e.shiftKey,panels[selected].mode);
     if(action){
       e.preventDefault();
       if(!e.repeat || action==='Fire') act(action);
@@ -954,52 +996,8 @@ async function start() {
   setInterval(()=>{
     if(paused()) return;
     if(battle.tick()) draw();
-    const guide=players[leader];
-    if(!guide?.fitness || guide.exited) return;
-    for(const [i,p] of players.entries()){
-      if(i===leader || !p.inTeam || !p.fitness || p.exited || panels[i].mode!==0) continue;
-      for(const cell of [...(guide.path??[])].reverse()){
-        const dx=cell.x-p.x,dy=cell.y-p.y;
-        if(Math.abs(cell.floor-p.floor)>1 || Math.abs(dx)+Math.abs(dy)>1) continue;
-        if(dx || dy){
-          const dir=dx>0?1:dx<0?3:dy>0?2:0;
-          act(dir===p.dir?'Forward':(dir-p.dir+4)%4===1?'Right':'Left',false,i,true);
-        }
-        break;
-      }
-    }
+    followLeader(players,leader,i=>panels[i].mode,(i,action)=>act(action,false,i,true));
   },200);
-  setInterval(()=>{
-    if(paused()) {ambient.stop();return;}
-    warningClock=(warningClock+1)&63;fieldClock=(fieldClock+1)%90;
-    let redrawWorld=false;
-    players.forEach((p,i)=>{
-      if(p.fitness && !p.exited) p.gruntFrames=Math.min(100,(p.gruntFrames??0)+1);
-      if(p.psiFlash && --p.psiFlash===0) redrawWorld=true;
-      if(p.monsterAttackFrames && --p.monsterAttackFrames===0) redrawWorld=true;
-      if(agePowers(p)) redrawWorld=true;
-      let repaint=(panels[i].mode===0 && p.fitness && !p.exited && fieldViews[i].scroll(fieldClock)) || (p.poison && (warningClock&31)===0);
-      for(const name of ['flashFrames','healthFrames','lockFrames','noRoomFrames','drowningFrames','invalidFrames']) {
-        if(p[name] && --p[name]===0) repaint=true;
-      }
-      for(const name of ['claws','bigClaws']) if(p[name] && --p[name].frames<=0) {p[name]=null;repaint=true;}
-      if(p.shot) {
-        const shot=p.shot,accuracy=equipment.items[shot.id].accuracy;
-        if(--shot.remaining<=0) p.shot=null;
-        else {
-          shot.frame=(shot.frame+1)%5;
-          const spread=()=>accuracy?accuracy-(Math.floor(Math.random()*65536)&(2*accuracy-1)):0;
-          shot.x=spread();shot.y=spread();
-        }
-        repaint=true;
-      }
-      const panel=panels[i];
-      if(repaint) hud.draw(buttons[i].firstChild.getContext('2d'),scenes[i],p,panel.mode,panel.index,inventory.weight(p),panel,i,warningClock);
-    });
-    if(redrawWorld) draw();
-    syncAtmos();
-    scrollChatter();
-  },20);
   setInterval(()=>{if(!paused()) radio.second();},1000);
   if(level.water.speed && level.water.speed!==99) setInterval(()=>{
     if(!paused() && machines.waterTick()) draw();

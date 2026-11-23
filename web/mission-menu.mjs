@@ -10,7 +10,7 @@ export async function missionMenu(dialog,load,state) {
     Promise.all(Array.from({length:12},(_,i)=>art('portrait'+i))),load('menu-font.bin'),load('menu-title.bin'),load('world-font.bin'),
     fetch('art/front-colors.json').then(r=>r.json()),load('hud-font.bin'),load('Fill.bin'),load('view-palette.bin')
   ]);
-  function letters(data,worldText=false) {
+  function letters(data,worldText=false,target=ctx) {
     const v=new DataView(data.buffer),start=v.getUint32(0),w=v.getUint16(4),h=v.getUint16(6),mask=v.getUint16(8),planes=v.getUint16(10),stride=w*h/8;
     const sheet=document.createElement('canvas');sheet.width=96*w;sheet.height=h;
     const gc=sheet.getContext('2d'),rgba=gc.createImageData(sheet.width,h);
@@ -26,7 +26,7 @@ export async function missionMenu(dialog,load,state) {
       const glyphs=[...str].map(c=>Math.min(95,Math.max(0,c.charCodeAt(0)-32)));
       const width=glyphs.reduce((n,g)=>n+data[20+g],0);scale=Math.min(scale,max/(width||1));
       let x=left?cx:cx-width*scale/2;
-      for(const g of glyphs){ctx.drawImage(sheet,g*w,0,w,h,Math.round(x),y,w*scale,h*yscale);x+=data[20+g]*scale;}
+      for(const g of glyphs){target.drawImage(sheet,g*w,0,w,h,Math.round(x),y,w*scale,h*yscale);x+=data[20+g]*scale;}
     };
   }
   const gameText=hudFont(gameFont);
@@ -43,6 +43,13 @@ export async function missionMenu(dialog,load,state) {
     gameText(ctx,value,x,y,'rgb('+viewPalette.subarray(3*pen,3*pen+3).join(',')+')');
   }
   const write=letters(font),title=letters(big),legend=letters(worldFont,true);
+  const multiplayerLabel=get('multiplayer').querySelector('canvas').getContext('2d');
+  letters(font,false,multiplayerLabel)('Multiplayer',224,0,0.85,440);
+  let capacity=2,group='Campaign';
+  get('room-game').onclick=()=>{group=group==='Campaign'?'Training':'Campaign';draw();};
+  const changeCapacity=step=>{capacity=2+(capacity-2+step+3)%3;draw();};
+  get('room-size').onclick=()=>changeCapacity(1);
+  get('create-room').onclick=()=>state().chooseSquad(capacity,group);
   let screen='maps',person=0,faceX=0,faceTarget=0,notice='';
   const slotIds=Array.from({length:5},(_,i)=>'slot-'+(i+1));
   for(const id of slotIds){
@@ -64,7 +71,7 @@ export async function missionMenu(dialog,load,state) {
     if(editing){editing=0;draw();dialog.focus();}
     else browser.cancel();
   };
-  const controls=[...slotIds,'write-slot','cancel-slots','load-slot','prev-map','next-map','squad-control','toggle-person','mission-music','back','save','resume','deploy','travel'];
+  const controls=['room-size','room-game','create-room',...slotIds,'write-slot','cancel-slots','load-slot','prev-map','next-map','squad-control','toggle-person','mission-music','back','save','resume','deploy','travel'];
   function button(id,x,y,w,h,label) {
     const b=get(id);b.hidden=false;b.style.left=x/6.4+'%';b.style.top=y/4+'%';b.style.width=w/6.4+'%';b.style.height=h/4+'%';
     b.setAttribute('aria-label',label);
@@ -92,7 +99,7 @@ export async function missionMenu(dialog,load,state) {
   get('prev-map').onclick=()=>move(-1);get('next-map').onclick=()=>move(1);
   function rosterAction(){
     const {draft}=state();
-    if(draft.length===4) {screen='maps';notice='';draw();dialog.dispatchEvent(new Event('menuchange'));dialog.focus({preventScroll:true});}
+    if(draft.length===state().size) {screen='maps';notice='';draw();dialog.dispatchEvent(new Event('menuchange'));dialog.focus({preventScroll:true});}
     else if(!draft.includes(person)) {draft.push(person);draw();}
   }
   get('toggle-person').onclick=rosterAction;
@@ -119,6 +126,16 @@ export async function missionMenu(dialog,load,state) {
   });
   const arrows=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
   dialog.addEventListener('keydown',e=>{
+    if(screen==='multiplayer'){
+      if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
+        e.preventDefault();changeCapacity(e.key==='ArrowLeft'?-1:1);
+      } else if(e.key==='ArrowUp' || e.key==='ArrowDown'){
+        e.preventDefault();
+        const buttons=['room-size','room-game','create-room','back'];
+        get(buttons[(buttons.indexOf(document.activeElement.id)+(e.key==='ArrowDown'?1:buttons.length-1))%buttons.length]).focus();
+      }
+      return;
+    }
     if(screen==='files'){
       if(e.key==='Escape'){e.preventDefault();get('cancel-slots').click();}
       else if(!editing && /^F[1-5]$/.test(e.key)){e.preventDefault();if(!e.repeat) choose(Number(e.key[1]));}
@@ -136,13 +153,13 @@ export async function missionMenu(dialog,load,state) {
     if(isChart() && notice && ['F1','F2'].includes(e.key)){
       e.preventDefault();if(e.key==='F1') get('deploy').click();else {get('travel').click();notice='';draw();}return;
     }
-    if(screen==='pause' || !arrows.includes(e.key)) return;
+    if(screen==='pause' || screen==='online-pause' || screen==='result' || !arrows.includes(e.key)) return;
     e.preventDefault();move(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1);
     if(screen==='maps') get('deploy').focus({preventScroll:true});
   });
   window.addEventListener('keyup',e=>chart.keys.delete(e.key));
   window.addEventListener('blur',()=>chart.keys.clear());
-  dialog.addEventListener('keydown',e=>{if(e.key==='Escape' && screen!=='pause' && screen!=='files'){e.preventDefault();get('back').click();}});
+  dialog.addEventListener('keydown',e=>{if(e.key==='Escape' && screen!=='pause' && screen!=='online-pause' && screen!=='files'){e.preventDefault();get('back').click();}});
   function hotspot(id,x,y,w,h,label){
     const b=get(id);b.dataset.drawn='1';b.hidden=false;
     Object.assign(b.style,{left:x/6.4+'%',top:y/4+'%',width:w/6.4+'%',height:h/4+'%'});
@@ -189,6 +206,19 @@ export async function missionMenu(dialog,load,state) {
       hotspot('cancel-slots',54,366,242,34,'ESC ABORT '+verb);
       if(notice) fileText(notice,null,102);
       ctx.restore();
+    } else if(screen==='online-pause'){
+      write('*** GAME PAUSED ***',320,50,1);
+      action('resume',112,150,416,52,'Resume current mission');
+      action('back',112,224,416,52,'Leave room');
+    } else if(screen==='result'){
+      title(notice,320,85,0.9);
+      action('back',112,225,416,52,'Return to main menu');
+    } else if(screen==='multiplayer'){
+      title('Multiplayer',320,48,0.9);
+      action('room-size',112,98,416,52,capacity+' players');
+      action('room-game',112,155,416,52,group);
+      action('create-room',112,212,416,52,'Choose characters');
+      action('back',112,266,416,52,'Return to main menu');
     } else if(screen==='pause'){
       write(get('menu-title').textContent,320,50,1);
       if(get('menu-title').textContent==='*** GAME PAUSED ***'){
@@ -208,17 +238,17 @@ export async function missionMenu(dialog,load,state) {
         ctx.drawImage(strip,offset+98,0,160,226,98,0,160,208);
         for(let i=0;i<5;i++) ctx.drawImage(rosterRock,0,208+i*39,640,39);
         const p=characters[person];
-        if(draft.length<4) p.profile.forEach((line,i)=>write(line,42,208+[14,50,101,138][i],0.83,398,true));
+        if(draft.length<state().size) p.profile.forEach((line,i)=>write(line,42,208+[14,50,101,138][i],0.83,398,true));
         else write('Your team is complete',50,254,0.92,390,true);
-        for(let i=0;i<4;i++) ctx.drawImage(faces[draft[i]]??empty,458+(i%2)*80,223+(i>>1)*88,64,74);
+        for(let i=0;i<state().size;i++) ctx.drawImage(faces[draft[i]]??empty,458+(i%2)*80,223+(i>>1)*88,64,74);
         hotspot('prev-map',0,0,98,208,'Previous character');
         hotspot('next-map',258,0,382,208,'Next character');
         hotspot('toggle-person',98,0,160,208,'Select '+p.name);
-        hotspot('squad-control',0,208,448,192,draft.length===4?'Continue to mission map':'Select '+p.name);
+        hotspot('squad-control',0,208,448,192,draft.length===state().size?'Continue to mission map':'Select '+p.name);
       } else if(campaignMode){
         const hit=chart.draw(ctx);
         ctx.drawImage(panel,0,320,640,80);
-        const canDeploy=hit && [...sel.options].some(o=>o.value===String(hit.id) && !o.disabled) && draft.length===4;
+        const canDeploy=hit && [...sel.options].some(o=>o.value===String(hit.id) && !o.disabled) && draft.length===state().size;
         get('deploy').disabled=!canDeploy;
         if(notice && (!hit || !campaign.completed.includes(hit.id))) notice='';
         if(notice){
@@ -248,7 +278,7 @@ export async function missionMenu(dialog,load,state) {
       action('back',2,351,116,45,'Back');
       
       action('mission-music',273,351,157,45,get('music').checked?'Music on':'Music off');
-      action('deploy',430,351,207,45,'Start mission');get('deploy').disabled=draft.length!==4;
+      action('deploy',430,351,207,45,state().online?'Create room':'Start mission');get('deploy').disabled=draft.length!==state().size;
       }
     }
     for(const id of controls) if(get(id).dataset.drawn==='0') get(id).hidden=true;
@@ -268,7 +298,10 @@ export async function missionMenu(dialog,load,state) {
     }
     anim=requestAnimationFrame(animate);
   }
-  return {draw,files(options){
+  return {draw,onlinePause(){screen='online-pause';draw();get('resume').focus();},result(message){screen='result';notice=message;draw();get('back').focus();},multiplayer(){
+    screen='multiplayer';capacity=2;
+    dialog.showModal();draw();get('room-size').focus();
+  },files(options){
     browser=options;screen='files';editing=0;notice='';
     if(!dialog.open) dialog.showModal();
     draw();dialog.focus();
