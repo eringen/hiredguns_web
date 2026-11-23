@@ -3,7 +3,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hired Guns</title>
 <style>
-:root{color-scheme:dark;background:#101416;color:#e1ddd1;font:16px system-ui}body{max-width:54rem;margin:3vh auto;padding:1rem}
+:root{--game-width:1280px;--screen-height:100vh;color-scheme:dark;background:#101416;color:#e1ddd1;font:16px system-ui}body{max-width:54rem;margin:3vh auto;padding:1rem}
+@supports (height:100dvh){:root{--screen-height:100dvh}}
 h1,h2,h3{font-family:"Barlow Condensed",system-ui,sans-serif;letter-spacing:.05em}h1{color:#ecbe78}header,.actions{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap}header{justify-content:space-between}
 main{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}button,select{font:inherit;background:#262d2e;color:inherit;border:1px solid #596265;padding:.45rem .7rem}button:enabled{cursor:pointer}button:disabled{opacity:.45}button[aria-pressed=true]{outline:2px solid #e9ba70;outline-offset:-2px}
 canvas{width:100%;display:block;background:#07090a}canvas,img{image-rendering:pixelated}nav{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0}
@@ -12,7 +13,7 @@ dialog{width:min(46rem,85vw);max-height:85vh;background:#192022;color:inherit;bo
 #roster img{width:48px;height:60px;display:block;margin:auto}#roster button{font-size:.85rem}.caption{display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:.3rem}.caption img{width:24px;height:30px}
 #inspect{display:flex;align-items:center;gap:1rem;min-height:4rem}#inspect img{max-width:30%;object-fit:contain}a{color:#ecbe78}
 body:has(#front:popover-open){background:#000}
-#front{height:min(400px,62.5vw,100vh);border:0;padding:0;width:min(640px,100vw,160vh);max-width:none;max-height:none;aspect-ratio:8/5;background:#000 url(art/front.png) center/100% 100% no-repeat;overflow:hidden;color:white;image-rendering:pixelated}
+#front{height:min(calc(var(--game-width) * .625),62.5vw,var(--screen-height));border:0;padding:0;width:min(var(--game-width),100vw,calc(var(--screen-height) * 1.6));max-width:none;max-height:none;aspect-ratio:8/5;background:#000 url(art/front.png) center/100% 100% no-repeat;overflow:hidden;color:white;image-rendering:pixelated}
 #front::backdrop{background:black}
 #front button{position:absolute;left:10%;width:70%;height:11%;border:0;padding:0;background:transparent}
 #front button:focus{outline:none}
@@ -23,11 +24,11 @@ body:has(#front:popover-open){background:#000}
 #front canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #front button:nth-of-type(1){top:39%}#front button:nth-of-type(2){top:50%}#front button:nth-of-type(3){top:61%}#front button:nth-of-type(4){top:79.5%}
 #front-status{position:absolute;bottom:0;left:8%;margin:0;background:black}
-body.mission{max-width:640px;background:black;color:#d5cdbb}
+body.mission{max-width:var(--game-width);background:black;color:#d5cdbb}
 main{gap:0;background:#000}
 html:has(body.mission){background:#000}
 html:not(.show-details) body.mission{box-sizing:border-box;min-height:100vh;min-height:100dvh;max-width:none;margin:0;padding:0;display:grid;place-items:center}
-html:not(.show-details) body.mission main{width:min(640px,100vw,149.5327vh);width:min(640px,100vw,149.5327dvh)}
+html:not(.show-details) body.mission main{width:min(var(--game-width),100vw,calc(var(--screen-height) * 320 / 214))}
 html:not(.show-details) body > :is(header,nav,#equipment),html:not(.show-details) body.mission > #status{display:none}
 main button{padding:0;border:0;position:relative;min-width:0;background:black}
 main button[aria-pressed=true]{outline:0}
@@ -35,7 +36,7 @@ main button:focus-visible{outline:1px solid white;z-index:1}
 .caption{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
 body.mission header h1{display:none}body.mission header{justify-content:flex-end;margin-bottom:.3rem}
 #equipment{margin:.5rem 0}summary{cursor:pointer}#equipment h2{display:none}
-#setup{position:fixed;width:min(640px,100vw,160vh);aspect-ratio:8/5;background:black;max-width:none;max-height:none;border:0;padding:0;overflow:hidden}
+#setup{position:fixed;width:min(var(--game-width),100vw,calc(var(--screen-height) * 1.6));aspect-ratio:8/5;background:black;max-width:none;max-height:none;border:0;padding:0;overflow:hidden}
 #setup::backdrop{background:black}
 #save-name{position:absolute;box-sizing:border-box;left:35%;width:62%;height:5.5%;margin:0;border:0;padding:0;background:#111;color:#edc;font:clamp(10px,2vw,15px) monospace}
 #setup button{position:absolute;opacity:0;border:0;padding:0}
@@ -44,7 +45,8 @@ body.mission header h1{display:none}body.mission header{justify-content:flex-end
 #ticker canvas{height:100%;background:transparent;will-change:transform}
 #ticker{min-width:0;overflow:hidden;background:#07090a;grid-area:2 / 1 / 3 / 3;display:block;width:100%;height:auto;aspect-ratio:320/8}body:not(.mission) #ticker{display:none}
 #death img{display:block;width:100%;height:auto}
-#death,#briefing{border:0;padding:0;width:min(640px,100vw,160vh);max-width:none;max-height:none;background:#000}
+#death,#briefing{border:0;padding:0;width:min(var(--game-width),100vw,calc(var(--screen-height) * 1.6));max-width:none;max-height:none;background:#000}
+#death{width:min(var(--game-width),100vw,calc(var(--screen-height) * 320 / 212))}
 #death::backdrop,#briefing::backdrop{background:#000}
 </style>
 <div id="front" popover="manual" role="dialog" aria-label="Hired Guns main menu">

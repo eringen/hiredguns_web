@@ -21,10 +21,11 @@ const assert=require('node:assert/strict');
     await page.keyboard.press('ArrowUp');
     await page.locator('#briefing').click();
     await page.waitForSelector('body.mission');
-    for(const viewport of [{width:960,height:720},{width:844,height:390},{width:390,height:844}]){
+    for(const viewport of [{width:1600,height:1000},{width:960,height:720},{width:844,height:390},{width:390,height:844}]){
       await page.setViewportSize(viewport);
       const [frame,top,radio,bottom]=await Promise.all(['main','main button','main #ticker','main button:nth-of-type(3)'].map(
         selector=>page.locator(selector).first().boundingBox()));
+      assert.ok(Math.abs(frame.width-Math.min(1280,viewport.width,viewport.height*320/214))<1);
       assert.ok(Math.abs(frame.x*2+frame.width-viewport.width)<2);
       assert.ok(Math.abs(frame.y*2+frame.height-viewport.height)<2);
       assert.ok(Math.abs(top.y+top.height-radio.y)<1 && Math.abs(radio.y+radio.height-bottom.y)<1);
