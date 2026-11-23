@@ -40,7 +40,8 @@ function spriteSheet(bytes, palette, water=false, count=67, planes=[0,1,2,3]) {
     const stride = w*h/8;
     const canvas = document.createElement('canvas');
     canvas.width=w; canvas.height=h;
-    const ctx = canvas.getContext('2d');
+    // The scene compositor reads these pixels for palette masks. Keep its sprite sources in CPU-backed canvases.
+    const ctx = canvas.getContext('2d',{willReadFrequently:true});
     const pixels = ctx.createImageData(w,h);
     for (let p=0;p<w*h;p++) {
       const byte=start+(p>>3), bit=7-(p&7);
@@ -68,7 +69,7 @@ function spriteSheet(bytes, palette, water=false, count=67, planes=[0,1,2,3]) {
           for(let n=0;n<4;n++) idx|=((bytes[start+(p>>3)+n*stride]>>(7-(p&7)))&1)<<n;
           pixels.data.set(palette.subarray(idx*3,idx*3+3),4*p);
         }
-        lit.getContext('2d').putImageData(pixels,0,0);return lit;
+        lit.getContext('2d',{willReadFrequently:true}).putImageData(pixels,0,0);return lit;
       };
     }
     if(water===true) canvas.waterMask=pixels.data;
@@ -628,7 +629,7 @@ async function start() {
     if(!variants) {variants=new Map();silhouettes.set(source,variants);}
     if(!variants.has(color)){
       const mask=document.createElement('canvas');mask.width=source.width;mask.height=source.height;
-      const ctx=mask.getContext('2d');ctx.drawImage(source,0,0);ctx.globalCompositeOperation='source-in';
+      const ctx=mask.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0);ctx.globalCompositeOperation='source-in';
       ctx.fillStyle=color;ctx.fillRect(0,0,mask.width,mask.height);variants.set(color,mask);
     }
     return variants.get(color);

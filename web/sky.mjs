@@ -7,7 +7,7 @@ export async function missionSky(load,level) {
   const black=[0,0,0]; // Main.s game_palette entry 0.
   const views=Array.from({length:4},(_,dir)=>{
     const canvas=document.createElement('canvas');canvas.width=144;canvas.height=84;
-    const ctx=canvas.getContext('2d'),image=ctx.createImageData(144,84);
+    const ctx=canvas.getContext('2d',{willReadFrequently:true}),image=ctx.createImageData(144,84);
     for(let y=0;y<84;y++) for(let x=0;x<144;x++) {
       const line=44*level.sky+Math.min(43,y+2);
       let color=y<42?tables.nosky[line]:black;
