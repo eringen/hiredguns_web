@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hired Guns · Original CD32 beta</title>
+<style>
+:root{color-scheme:dark;background:#111518;color:#e2ded2;font:16px system-ui}body{max-width:58rem;margin:3vh auto;padding:1rem}a{color:#ffcc88}label{display:block;margin:1rem 0}button,input{font:inherit}#machine{height:min(72vh,640px)}[hidden]{display:none}
+</style>
+<a href="index.html">Level explorer</a>
+<h1>Hired Guns · Original CD32 beta</h1>
+<form id="boot">
+<p>Choose your CD32 Kickstart ROM to start the original game. Click the game screen to advance the intro.</p>
+<label>CD32 Kickstart ROM <input id="kick" type="file" required></label>
+
+<button>Start game</button></form>
+<p id="status" role="status"></p><div id="machine" hidden><div id="game"></div></div>
+<p><a href="sae/license.html">Emulator license</a></p><script src="sae.js"></script><script type="module" src="original.mjs"></script></html>
