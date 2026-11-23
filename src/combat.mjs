@@ -68,10 +68,10 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
     if(dir<4) flight(f,dir);
     flames.push(f);fireHit(f);
   }
-  function ranged(m,def) {
+  function ranged(m,def,dir=m.dir) {
     if(!def.fireballDensity) return false;
     let x=m.x,y=m.y;
-    const [dx,dy]=vectors[m.dir];
+    const [dx,dy]=vectors[dir];
     for(let n=0;n<=def.range;n++) {
       x+=dx;y+=dy;if(!inside(x,y)) return false;
       if(playerAt(x,y,m.floor)) {
@@ -80,7 +80,8 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
           return Math.max(dx,dy,dz)<12?equipment.audioDistance[dz*144+dy*12+dx]:0;
         }));
         if(volume) sound('Gun',95,1,volume);
-        launch(m,m.dir,def.fireballDensity,def.projectileSpeed,def.decay);return true;
+        m.dir=dir;
+        launch(m,dir,def.fireballDensity,def.projectileSpeed,def.decay);return true;
       }
       const b=level.cell(x,y,m.floor).blockType;
       if(at(x,y,m.floor) || (b!==null && b!==5 && b!==7 && !(b===4 && [0,2].includes(level.style)))) return false;
@@ -142,6 +143,31 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
     }
     if(g.velocity!==-1000) {g.height+=g.velocity;g.velocity=Math.max(-16,g.velocity-8);}
   }
+  // Build one shortest-path field per occupied floor and movement type per AI tick.
+  // Multiple living characters are destinations, so an inaccessible squad member
+  // cannot lure every monster into the same dead end.
+  function pursuitField(floor,waterOnly){
+    const width=level.width,size=width*level.depth;
+    const distances=new Int16Array(size).fill(-1),queue=new Uint16Array(size);
+    let head=0,tail=0;
+    for(const p of players){
+      const k=p.y*width+p.x;
+      if(living(p) && p.floor===floor && distances[k]===-1){distances[k]=0;queue[tail++]=k;}
+    }
+    while(head<tail){
+      const k=queue[head++],x=k%width,y=Math.floor(k/width);
+      for(const [dx,dy] of vectors){
+        const nx=x+dx,ny=y+dy,next=ny*width+nx;
+        if(!inside(nx,ny) || distances[next]!==-1) continue;
+        const c=level.cell(nx,ny,floor);
+        distances[next]=-2;
+        if(c.blockType!==null || (waterOnly && !(c.terrain&4))) continue;
+        if(c.floorType===null && !(c.terrain&4) && (!floor || level.cell(nx,ny,floor-1).blockType===null)) continue;
+        distances[next]=distances[k]+1;queue[tail++]=next;
+      }
+    }
+    return distances;
+  }
   function tick() {
     ticks++;
     let changed=grenades.length>0;
@@ -170,6 +196,7 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
         changed=true;
       }
     }
+    const fields=new Map();
     for(const m of [...actors]) {
       if(!actors.includes(m)) continue;
       const def=equipment.monsters[m.type];
@@ -182,15 +209,29 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
       if(def.speed<0) {
         m.dir=(m.dir+1)%4;changed=true;continue;
       }
-      const dx=target.x-m.x,dy=target.y-m.y;
-      const dirs=[dx && (dx>0?1:3),dy?dy>0?2:0:null];
-      if(!dx) dirs[0]=null;
-      if(Math.abs(dy)>Math.abs(dx)) dirs.reverse();
-      for(let dir of dirs) {
-        if(dir===null) continue;
-        if(m.fitness<def.bravery && distance(target)>1) dir=(dir+2)%4;
-        const x=m.x+vectors[dir][0],y=m.y+vectors[dir][1];
-        if(!inside(x,y)) continue;
+      if(distance(target)>1 && def.fireballDensity){
+        const aim=players.find(p=>living(p) && p.floor===m.floor && (p.x===m.x || p.y===m.y) &&
+          distance(p)<=def.range+1);
+        if(aim){
+          const dir=aim.x!==m.x?(aim.x>m.x?1:3):(aim.y>m.y?2:0);
+          if(dir!==m.dir && ranged(m,def,dir)){changed=true;continue;}
+        }
+      }
+      const key=m.floor*2+Number(!!def.waterOnly);
+      if(!fields.has(key)) fields.set(key,pursuitField(m.floor,def.waterOnly));
+      const field=fields.get(key),here=field[m.y*level.width+m.x];
+      const retreat=m.fitness<def.bravery && distance(target)>1;
+      let best=null,bestScore=-Infinity;
+      for(let n=0;n<4;n++){
+        const dir=(m.dir+n)%4,x=m.x+vectors[dir][0],y=m.y+vectors[dir][1];
+        if(!inside(x,y) || at(x,y,m.floor)) continue;
+        const steps=field[y*level.width+x];
+        if(steps<0 || (here>=0 && (retreat?steps<=here:steps>=here))) continue;
+        const score=retreat?steps:-steps;
+        if(score>bestScore){best={dir,x,y};bestScore=score;}
+      }
+      if(best){
+        const {dir,x,y}=best;
         const p=playerAt(x,y,m.floor);
         if(p) {
           if(def.sample) sound(extraSamples[def.sample],variedPeriod(def.period),players.indexOf(p)%2);
@@ -198,11 +239,8 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
             p.poison=def.poison*655;p.poisonCount=p.character.physique;
           }
           p.monsterAttackFrames=25;
-          inventory.hit(p,(def.weaponModifier<<5)&65535,false,'melee');m.dir=dir;changed=true;break;}
-        const c=level.cell(x,y,m.floor);
-        if(c.blockType!==null || at(x,y,m.floor) || (def.waterOnly && !(c.terrain&4))) continue;
-        if(c.floorType===null && !(c.terrain&4) && (!m.floor || level.cell(x,y,m.floor-1).blockType===null)) continue;
-        m.dir=dir;m.x=x;m.y=y;changed=true;break;
+          inventory.hit(p,(def.weaponModifier<<5)&65535,false,'melee');m.dir=dir;changed=true;continue;}
+        m.dir=dir;m.x=x;m.y=y;changed=true;
       }
     }
     return changed;

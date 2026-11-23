@@ -20,6 +20,11 @@ const fs=require('node:fs');
         if(this.canvas.width===144 && this.canvas.height===84) window.scenePaints++;
         return clear.apply(this,args);
       };
+      const connect=AudioBufferSourceNode.prototype.connect;
+      AudioBufferSourceNode.prototype.connect=function(node,...args){
+        this.testGain=node.gain;
+        return connect.call(this,node,...args);
+      };
       const original=AudioBufferSourceNode.prototype.start;
       AudioBufferSourceNode.prototype.start=function(...args){
         if(!this.loop && this.buffer) window.cues.push({length:this.buffer.length,period:Math.round(3546895/(22050*this.playbackRate.value))});
@@ -357,6 +362,22 @@ const fs=require('node:fs');
       for(let i=0;i<25;i++) {window.clocks.get(1000)();window.clocks.get(20)();}});
     await page.waitForFunction(()=>window.liftEnded);
 
+    const emptyLift=structuredClone(initial);
+    emptyLift.state.members.forEach((p,i)=>{if(i) p.fitness=0;});
+    const listener=emptyLift.state.members[0];
+    listener.x+=2;
+    emptyLift.radioLine='RADIO SCROLL TEST';emptyLift.radioX=160;
+    await restore(emptyLift);await page.keyboard.press('1');await advance(1000,1);await advance(20,1);
+    await page.waitForFunction(()=>{window.clocks.get(20)();return window.liftVoices.length>0;});
+    assert.ok(Math.abs(await page.evaluate(()=>window.liftVoices[0].testGain.value)-28/63)<0.001,
+      'An empty lift two squares away and one floor below is audible at 70% volume.');
+    const animation=page.locator('#ticker canvas');
+    const scrollX=()=>animation.evaluate(c=>new DOMMatrix(getComputedStyle(c).transform).m41);
+    const beforeScroll=await scrollX();
+    await page.waitForFunction(x=>new DOMMatrix(getComputedStyle(document.querySelector('#ticker canvas')).transform).m41<x-4,beforeScroll);
+    await page.click('#menu');
+    await page.waitForFunction(()=>document.querySelector('#ticker canvas').getAnimations()[0]?.playState==='paused');
+    await page.click('#resume');
     Object.assign(player,{x:12,y:13,floor:14,dir:2});
     await restore(initial);
     const skyColors=JSON.parse(fs.readFileSync('build/preview/sky.json')).nosky;

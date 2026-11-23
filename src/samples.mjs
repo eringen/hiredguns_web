@@ -7,7 +7,7 @@ export function movementAudio(samplesByName) {
   let context;
   const buffers = new Map();
   return function play(kind, period, channel, volume=63) {
-    if (!window.AudioContext || !period) return;
+    if (!window.AudioContext || !period || volume<=0) return;
     context ??= new AudioContext();
     if (context.state === 'suspended') context.resume().catch(()=>{});
     if (!buffers.has(kind)) {
@@ -71,8 +71,15 @@ export function ambientAudio(files) {
   }
   function update(spec,slot='ambient') {
     if(!context || context.state!=='running') return;
-    const signature=spec.name+':'+spec.period+':'+spec.volume;
-    if(voices.get(slot)?.signature===signature) return;
+    if(!spec.volume){stop(slot);return;}
+    const signature=spec.name+':'+spec.period,entry=voices.get(slot);
+    if(entry?.signature===signature){
+      if(entry.volume!==spec.volume){
+        entry.gain.gain.setTargetAtTime(spec.volume/63,context.currentTime,0.04);
+        entry.volume=spec.volume;
+      }
+      return;
+    }
     stop(slot);
     const {audio,start,end}=buffer(spec.name);
     const voice=context.createBufferSource();voice.buffer=audio;voice.loop=true;
@@ -80,7 +87,7 @@ export function ambientAudio(files) {
     const gain=context.createGain();gain.gain.value=spec.volume/63;
     voice.connect(gain);gain.connect(context.destination);voice.start();
     voice.onended=()=>{voice.disconnect();gain.disconnect();};
-    voices.set(slot,{voice,signature});
+    voices.set(slot,{voice,gain,volume:spec.volume,signature});
   }
   return {unlock,update,stop};
 }

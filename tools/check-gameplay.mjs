@@ -218,6 +218,17 @@ for(let x=9;x<=12;x++) attackMap.setTerrain((8*23+10)*23+x,1);
 rangedBattle.restore({...rangedBattle.snapshot(),actors:[{x:9,y:10,floor:8,type:rangedType,dir:1,wait:1,fitness:65535}]});
 rangedBattle.tick();
 assert.deepEqual(shots,[['Gun',95,1,47]]);
+// The only route initially leads away from the target and around a solid wall.
+const maze=load(1),hunters=inventorySession(maze,eq),hunt=combat(maze,eq,hunters,()=>{});
+const hunterType=eq.monsters.findIndex(m=>m && m.speed>0 && !m.waterOnly && !m.fireballDensity);
+for(let y=0;y<maze.depth;y++) for(let x=0;x<maze.width;x++) maze.setTerrain((8*23+y)*23+x,3);
+for(const [x,y] of [[8,8],[8,9],[9,9],[10,9],[10,8]]) maze.setTerrain((8*23+y)*23+x,1);
+hunters.players.forEach((p,i)=>Object.assign(p,{x:10,y:8,floor:8,exited:!!i}));
+const hunter={x:8,y:8,floor:8,type:hunterType,dir:1,wait:1,fitness:65535};
+hunt.restore({...hunt.snapshot(),actors:[hunter]});
+for(const xy of [[8,9],[9,9],[10,9]]){
+  hunter.wait=1;hunt.tick();assert.deepEqual([hunter.x,hunter.y],xy);
+}
 const voices=[], voiceTeam=inventorySession(load(1),eq,[0,1,2,3],(...cue)=>voices.push(cue));
 for(const member of voiceTeam.players) {
   member.gruntFrames=100;

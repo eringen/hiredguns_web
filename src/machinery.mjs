@@ -40,7 +40,7 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
     const state=(terrain>>>19)&3;
     if(!(terrain&8) || (state!==1 && state!==2)) return;
     trigger((terrain>>>23)&31,state===1);
-    play('Button',182);
+    play('Button',182,key(x,y,z));
     level.setTerrain(key(x,y,z),(terrain&~(3<<19))|((3-state)<<19));
   }
   function pad(x,y,z,release) {
@@ -59,7 +59,7 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
         if(i<0) {lock(door.lock);return;}
         p.pack.splice(i,1);
       }
-      lock(door.lock,true);play('Unlock',136);door.dir=0;
+      lock(door.lock,true);play('Unlock',136,door.key);door.dir=0;
     }
     door.trig=1;
   }
@@ -79,21 +79,21 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
       let value=c.terrain;
       if(d.dir===1) {
         if(c.blockType===null) continue;
-        if(frame>=10) {value&=~blockMask;d.dir=d.count=0;play('DoorClosed',568);}
+        if(frame>=10) {value&=~blockMask;d.dir=d.count=0;play('DoorClosed',568,d.key);}
         else value=(value&~variant)|((frame+1)<<23);
       } else {
-        if(c.blockType!==null && frame===0) {d.dir=0;play('DoorClosed',568);continue;}
+        if(c.blockType!==null && frame===0) {d.dir=0;play('DoorClosed',568,d.key);continue;}
         value=(value&~(blockMask|variant))|d.type|(((c.blockType===null?10:frame)-1)<<23);
       }
-      if(starting) play('DoorOpening',428);
+      if(starting) play('DoorOpening',428,d.key);
       level.setTerrain(d.key,value);
       changed=true;
     }
     return changed;
   }
-  let riding=false;
+  const movingLifts=new Set();
   function liftsTick() {
-    riding=false;
+    movingLifts.clear();
     let changed=false;
     for(const lift of level.lifts) {
       if(!lift.key) continue;
@@ -119,7 +119,7 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
       level.setTerrain(next,(dest.terrain&~(floorMask|blockMask))|payload);
       const block=level.pushables.find(b=>b.key===lift.key);if(block) block.key=next;
       lift.height+=delta;lift.key=next;
-      if(riders.length) riding=true;
+      movingLifts.add(lift);
       riders.forEach(p=>{p.floor+=delta;});
       changed=true;
     }
@@ -158,7 +158,7 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
     for(const block of row.reverse()) moveBlock(block,block.key+(pull?-delta:delta));
     if(!pull) pad(p.x,p.y,z,true);
     p.x+=pull?-dx:dx;p.y+=pull?-dy:dy;
-    pad(p.x,p.y,z,false);play('BlockSlide',452);return true;
+    pad(p.x,p.y,z,false);play('BlockSlide',452,key(p.x,p.y,z));return true;
   }
   function blocksTick() {
     let moved=false;
@@ -197,5 +197,5 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
     saved.doors.forEach((v,i)=>Object.assign(level.doors[i],v));
     saved.lifts.forEach((v,i)=>Object.assign(level.lifts[i],v));
   }
-  return {get riding(){return riding;},shove,blocksTick,waterTick,panel,pad,bump,doorsTick,liftsTick,snapshot,restore};
+  return {movingLifts,shove,blocksTick,waterTick,panel,pad,bump,doorsTick,liftsTick,snapshot,restore};
 }

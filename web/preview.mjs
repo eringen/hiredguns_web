@@ -418,7 +418,14 @@ async function start() {
 
   await hud.preload(players,figureBytes);
   const motor=ambientAudio({DoorOpening:await load('DoorOpening.8svx'),Lift:await load('Lift.8svx')});
-  const machines=machinery(level,players,(name,period)=>{if(name!=='DoorOpening') sound(name,period,2);},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos));
+  function machineryVolume(key,base){
+    const x=key%level.width,y=Math.floor(key/level.width)%level.depth,z=Math.floor(key/(level.width*level.depth));
+    let distance=10;
+    for(const p of players) if(p.fitness && !p.exited)
+      distance=Math.min(distance,Math.abs(x-p.x)+Math.abs(y-p.y)+Math.abs(z-p.floor));
+    return Math.round(base*(10-distance)/10);
+  }
+  const machines=machinery(level,players,(name,period,key)=>{if(name!=='DoorOpening') sound(name,period,2,machineryVolume(key,63));},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos));
   const atmosName='Atmos'+String(entry.atmos).padStart(2,'0');
   const ambient=ambientAudio(Object.fromEntries(await Promise.all([atmosName,'Water'].map(async n=>[n,await load('atmos/'+n+'.sfx')]))));
   const death=document.querySelector('#death');
@@ -426,11 +433,14 @@ async function start() {
   const syncAtmos=()=>{
     if(paused() || briefing.open) {ambient.stop();motor.stop();return;}
     ambient.update(environmentSound(level,players,entry.atmos));
-    if(machines.riding) motor.update({name:'Lift',period:412,volume:40},'lift');else motor.stop('lift');
+    for(const lift of level.lifts){
+      if(machines.movingLifts.has(lift)) motor.update({name:'Lift',period:412,volume:machineryVolume(lift.key,40)},lift);
+      else motor.stop(lift);
+    }
     for(const door of level.doors){
       if(!door.key) continue;
       if((door.dir===1 || door.dir===2) && level.cell(door.key%23,Math.floor(door.key/23)%23,Math.floor(door.key/529)).blockType!==null)
-        motor.update({name:'DoorOpening',period:428,volume:63},door.key);
+        motor.update({name:'DoorOpening',period:428,volume:machineryVolume(door.key,63)},door.key);
       else motor.stop(door.key);
     }
   };
@@ -449,7 +459,30 @@ async function start() {
   const flameSheets=await Promise.all([1,2,3,4].map(async n=>spriteSheet(await load('expl'+n+'.bin'),explosionPalette,false,67,[0,3,5])));
   let outcome='';
   let radioLine='',radioX=320,lastCore=0;
-  const ticker=document.querySelector('#ticker'),radioCtx=ticker.getContext('2d');
+  const ticker=document.querySelector('#ticker'),ribbon=ticker.querySelector('canvas');
+  let scrollAnimation=null;
+  function syncScroll(){
+    if(!scrollAnimation) return;
+    if(paused()) scrollAnimation.pause();else scrollAnimation.play();
+  }
+  setup.addEventListener('close',syncScroll);
+  new MutationObserver(syncScroll).observe(setup,{attributes:true,attributeFilter:['open']});
+  document.addEventListener('visibilitychange',syncScroll);
+  function scrollChatter(){
+    if(scrollAnimation) return;
+    if(!radioLine){radioLine=radio.take()??'';radioX=320;}
+    if(!radioLine) return;
+    ticker.setAttribute('aria-label',radioLine);
+    const width=Math.max(1,hud.width(radioLine)+2);
+    ribbon.width=width;ribbon.style.width=100*width/320+'%';
+    hud.text(ribbon.getContext('2d'),radioLine,0,1);
+    scrollAnimation=ribbon.animate([{transform:'translateX('+100*radioX/width+'%)'},{transform:'translateX(-100%)'}],
+      {duration:Math.max(1,(radioX+width)*20),fill:'both',easing:'linear'});
+    scrollAnimation.onfinish=()=>{
+      scrollAnimation.cancel();scrollAnimation=null;radioLine='';
+      ribbon.getContext('2d').clearRect(0,0,width,8);
+    };
+  }
   const battle=combat(level,equipment,inventory,(id,period)=>{if(effects[id]) sound(effects[id],period,0);},sound,p=>{
     const seen=panels[players.indexOf(p)].seen,start=p.floor*level.width*level.depth;
     for(let i=0;i<level.width*level.depth;i++) seen.add(start+i);
@@ -493,7 +526,7 @@ async function start() {
   document.querySelector('#load-slot').onclick=()=>browseSaves(false,()=>missionUI.open(true));
   saveButton.onclick=()=>browseSaves(true,()=>missionUI.open(true));
   function saveMission(position,name){
-      localStorage.setItem(saveKey(position),JSON.stringify({name,map:entry.id,campaign:campaignMode,progress:campaignMode?campaign:undefined,squad,selected,leader,radio:radio.snapshot(),radioLine,radioX,battle:battle.snapshot(),machines:machines.snapshot(),seen:panels.map(panel=>[...panel.seen]),state:inventory.snapshot()}));
+      localStorage.setItem(saveKey(position),JSON.stringify({name,map:entry.id,campaign:campaignMode,progress:campaignMode?campaign:undefined,squad,selected,leader,radio:radio.snapshot(),radioLine,radioX:radioX-(scrollAnimation?.currentTime??0)/20,battle:battle.snapshot(),machines:machines.snapshot(),seen:panels.map(panel=>[...panel.seen]),state:inventory.snapshot()}));
       setup.close();
       feedback.textContent='Mission saved.';
   }
@@ -599,7 +632,7 @@ async function start() {
     if(players.every(p=>!p.fitness)){
       outcome='Game over';
       ambient.stop();motor.stop();
-      death.showModal();death.focus();
+      death.showModal();death.focus();syncScroll();
       const theme=new Audio('death.mp3');
       if(musicToggle.checked){theme.loop=true;theme.play().catch(()=>{});}
       const leave=()=>{theme.pause();location.assign(location.pathname);};
@@ -965,15 +998,7 @@ async function start() {
     });
     if(redrawWorld) draw();
     syncAtmos();
-    if(!radioLine) {
-      radioLine=radio.take()??'';radioX=320;
-      if(radioLine) ticker.setAttribute('aria-label',radioLine);
-    }
-    radioCtx.clearRect(0,0,320,8);
-    if(radioLine) {
-      hud.text(radioCtx,radioLine,radioX,1);
-      if(--radioX < -hud.width(radioLine)) radioLine='';
-    }
+    scrollChatter();
   },20);
   setInterval(()=>{if(!paused()) radio.second();},1000);
   if(level.water.speed && level.water.speed!==99) setInterval(()=>{
