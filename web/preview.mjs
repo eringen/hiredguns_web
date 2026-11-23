@@ -94,7 +94,7 @@ function slots() {
 
 async function start() {
   const room=new URLSearchParams(location.search).get('room');
-  let onlineCommand;
+  let onlineCommand,watchChart=false,shareChart;
   if(!room && performance.getEntriesByType('navigation')[0]?.type==='reload') {
     history.replaceState(null,'',location.pathname);
     sessionStorage.removeItem('hiredguns.frontVisited');
@@ -205,7 +205,7 @@ async function start() {
   }
   function syncMusic() {
     const training = catalog.find(m=>String(m.id)===selector.value)?.group === 'Training';
-    const onFront=front.matches(':popover-open');
+    const onFront=front.matches(':popover-open') || (setup.open && missionUI?.inMultiplayerSetup);
     if(onFront && musicToggle.checked) frontMusic.play().catch(()=>{});
     else frontMusic.pause();
     const canPlay=!onFront && !deployed && setup.open && musicToggle.checked && !training;
@@ -231,7 +231,7 @@ async function start() {
   setup.addEventListener('close',syncMusic);
   setup.addEventListener('menuchange',syncMusic);
   function updateRoster() {missionUI?.draw();}
-  missionUI=await missionMenu(setup,load,()=>({draft,size:onlineSize || 4,online:!!onlineSize,chooseSquad(size,group){
+  missionUI=await missionMenu(setup,load,()=>({draft,watchChart,shareChart,size:onlineSize || 4,online:!!onlineSize,chooseSquad(size,group){
     onlineSize=size;draft=[];campaign=freshCampaign();selectGroup(group);missionUI.open(false,true);syncMusic();
   },characters:equipment.characters,catalog,campaign,campaignMode,locked:!!(campaignMode && campaign.squad)}));
   function browseSaves(saving,cancel){
@@ -298,7 +298,7 @@ async function start() {
       choice.onpointerenter = () => choice.focus();
       choice.onclick = () => {
         if(choice.id==='multiplayer'){
-          opening.leave(()=>{front.hidePopover();missionUI.multiplayer();});
+          opening.leave(()=>{front.hidePopover();missionUI.multiplayer();syncMusic();});
           return;
         }
         if (!choice.dataset.group) {
@@ -885,6 +885,7 @@ async function start() {
   },120);
   if(room) {
     const {connectRoom}=await import('./multiplayer.mjs');
+    document.querySelector('main').dataset.players=String(players.length);
     document.body.classList.add('mission');
     for(const element of [menu,setup,document.querySelector('#equipment')]) element.inert=true;
 
@@ -923,9 +924,13 @@ async function start() {
         sharedPause=false;setup.close();setup.inert=true;
       }
       if(state.phase==='map' && (!setup.open || campaign.current!==state.campaign.current)){
+        watchChart=selected!==0;shareChart=undefined;
+        setup.oncancel=e=>e.preventDefault();
         campaign=state.campaign;campaignMode=true;
         draft=[...ids];selectGroup('Campaign');setup.inert=selected!==0;
         if(!setup.open) setup.showModal();missionUI.open(false,false);
+        if(state.chart) missionUI.restoreChart(state.chart);
+        if(!watchChart){shareChart=onlineCommand.chart;missionUI.draw();}
         deploy.onclick=()=>onlineCommand(selected,'Deploy '+selector.value);
         document.querySelector('#travel').onclick=()=>onlineCommand(selected,'Travel '+selector.value);
       }
@@ -951,7 +956,7 @@ async function start() {
         const name=event.name || effects[event.sample];
         if(name) sound(name,event.period,event.channel??0,event.key===undefined?event.volume??63:machineryVolume(event.key,63));
       }
-    });
+    },view=>missionUI.restoreChart(view));
     return;
   }
   if(!restoredBattle) battle.start();

@@ -87,6 +87,7 @@ export async function missionMenu(dialog,load,state) {
   }
   const sel=get('level'),world=get('world');
   const chart=worldMap(map,flag,cross,world,state,sel);
+  let lastChart='';
   const isChart=()=>screen==='maps' && state().campaignMode;
   function move(dir){
     if(screen==='roster') faceTarget=Math.max(0,Math.min(1760,faceTarget+160*dir));
@@ -120,12 +121,14 @@ export async function missionMenu(dialog,load,state) {
     get('deploy').click();
   }
   world.addEventListener('click',e=>{
+    if(state().watchChart) return;
     const id=e.target.closest('button')?.dataset.location;
     if(id) chart.aim(state().catalog.find(loc=>loc.id===Number(id)));
     draw();confirmMap();
   });
   const arrows=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
   dialog.addEventListener('keydown',e=>{
+    if(isChart() && state().watchChart){e.preventDefault();e.stopImmediatePropagation();return;}
     if(screen==='multiplayer'){
       if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
         e.preventDefault();changeCapacity(e.key==='ArrowLeft'?-1:1);
@@ -251,6 +254,11 @@ export async function missionMenu(dialog,load,state) {
         const canDeploy=hit && [...sel.options].some(o=>o.value===String(hit.id) && !o.disabled) && draft.length===state().size;
         get('deploy').disabled=!canDeploy;
         if(notice && (!hit || !campaign.completed.includes(hit.id))) notice='';
+        if(state().shareChart){
+          const view={...chart.snapshot(),replay:!!notice};
+          const serialized=JSON.stringify(view);
+          if(serialized!==lastChart){lastChart=serialized;state().shareChart(view);}
+        }
         if(notice){
           legend('You have been here already, do you wish to explore again?',10,325,0.9,615,true,1.7);
           legend('F1  Yes, explore the location.',50,345,0.95,560,true,1.7);
@@ -298,15 +306,19 @@ export async function missionMenu(dialog,load,state) {
     }
     anim=requestAnimationFrame(animate);
   }
-  return {draw,onlinePause(){screen='online-pause';draw();get('resume').focus();},result(message){screen='result';notice=message;draw();get('back').focus();},multiplayer(){
+  return {draw,restoreChart(view){
+    if(!isChart() || !view) return;
+    chart.restore(view);notice=view.replay?'Replay this location?':'';
+    lastChart=JSON.stringify(view);draw();
+  },onlinePause(){screen='online-pause';draw();get('resume').focus();},result(message){screen='result';notice=message;draw();get('back').focus();},multiplayer(){
     screen='multiplayer';capacity=2;
     dialog.showModal();draw();get('room-size').focus();
   },files(options){
     browser=options;screen='files';editing=0;notice='';
     if(!dialog.open) dialog.showModal();
     draw();dialog.focus();
-  },get inRoster(){return screen==='roster';},open(paused,roster=false){
-    screen=paused?'pause':roster?'roster':'maps';person=0;faceX=faceTarget=0;notice='';
+  },get inMultiplayerSetup(){return screen==='multiplayer';},get inRoster(){return screen==='roster';},open(paused,roster=false){
+    lastChart='';screen=paused?'pause':roster?'roster':'maps';person=0;faceX=faceTarget=0;notice='';
     if(isChart()) chart.reset();draw();dialog.focus({preventScroll:true});cancelAnimationFrame(anim);lastTick=performance.now();anim=requestAnimationFrame(animate);
   },message(value){notice=value;draw();}};
 }

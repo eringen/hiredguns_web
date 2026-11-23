@@ -17,7 +17,7 @@ export function worldMap(map,flag,cross,world,state,selector){
     for(const marker of world.children) marker.setAttribute('aria-pressed',String(Number(marker.dataset.location)===hit?.id));
   }
   function step(){
-    if(!active) return;
+    if(!active || state().watchChart) return;
     x=clamp(x+4*(keys.has('ArrowRight')-keys.has('ArrowLeft')),4,map.width-32);
     y=clamp(y+2*(keys.has('ArrowDown')-keys.has('ArrowUp')),0,map.height-1);
     sx=clamp(follow(sx,x-256,4),0,map.width-width);
@@ -25,6 +25,7 @@ export function worldMap(map,flag,cross,world,state,selector){
     scan();
   }
   function point(e){
+    if(state().watchChart) return;
     const r=world.getBoundingClientRect();
     x=clamp(Math.round(sx+(e.clientX-r.left)*width/r.width),0,map.width-1);
     y=clamp(Math.round(sy+(e.clientY-r.top)*height/r.height),0,map.height-1);
@@ -53,5 +54,8 @@ export function worldMap(map,flag,cross,world,state,selector){
     ctx.restore();
     return hit;
   }
-  return {reset,draw,step,aim,keys,setActive(value){if(value && !active) reset();active=value;if(!value) keys.clear();}};
+  return {reset,draw,step,aim,keys,
+    snapshot:()=>({x,y,sx,sy}),
+    restore(view){({x,y,sx,sy}=view);keys.clear();scan();},
+    setActive(value){if(value && !active) reset();active=value;if(!value) keys.clear();}};
 }
