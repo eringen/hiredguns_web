@@ -97,5 +97,6 @@ export function sourcePan(listener,x,y,floor) {
   const dx=x-listener.x,dy=y-listener.y,dz=floor-listener.floor;
   const distance=Math.hypot(dx,dy,dz);
   const right=[[1,0],[0,1],[-1,0],[0,-1]][listener.dir];
-  return distance ? (dx*right[0]+dy*right[1])/distance : 0;
+  // Equal-power pan at 0.3 leaves the quieter ear at about 61% of the louder ear.
+  return distance ? 0.3*(dx*right[0]+dy*right[1])/distance : 0;
 }

@@ -1,5 +1,5 @@
 import {loadSpriteSheet} from './sprite-png.mjs';
-import {advanceEffects,syncEffects} from './effects.mjs';
+import {SHAKE_TABLE,advanceEffects,syncEffects} from './effects.mjs';
 import {fieldAction,keyAction,followLeader} from './controls.mjs';
 import {agePowers} from './psionics.mjs';
 import {fieldAnimation} from './field.mjs';
@@ -406,6 +406,9 @@ async function start() {
   const samples=await loadAudio([...new Set(['Footstep','Bump','GunReload',...effects,...extraSamples,'DoorOpening','DoorClosed','Button','BlockSlide','Teleport',atmosName,'Water'].filter(Boolean))]);
   samples.step=samples.Footstep;samples.bump=samples.Bump;samples.reload=samples.GunReload;
   const sound=movementAudio(samples);
+  let shakeFrame=0;
+  function shake(power){shakeFrame=power;}
+
   const inventory = inventorySession(level,equipment,squad,sound);
   const players = inventory.players;
   if(campaignMode && campaign.squad?.join(',')===squad.join(',')) {
@@ -423,7 +426,7 @@ async function start() {
     const distance=Math.min(10,Math.abs(x-p.x)+Math.abs(y-p.y)+Math.abs(z-p.floor));
     return Math.round(base*(10-distance)/10);
   }
-  const machines=machinery(level,players,(name,period,key)=>{if(name!=='DoorOpening') sound(name,period,2,machineryVolume(key,63),machineryPan(key));},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos));
+  const machines=machinery(level,players,(name,period,key)=>{if(name!=='DoorOpening') sound(name,period,2,machineryVolume(key,63),machineryPan(key));},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos),shake);
   const ambient=ambientAudio(samples);
   const death=document.querySelector('#death');
   const paused=()=>(handheld && portrait.matches) || setup.open || death.open || document.hidden;
@@ -486,7 +489,7 @@ async function start() {
   },(p,x,y,floor)=>{
     machines.pad(p.x,p.y,p.floor,true);Object.assign(p,{x,y,floor});
     machines.pad(x,y,floor,false);sound('Teleport',683,players.indexOf(p)%2);
-  });
+  },shake);
   const skeleton=await loadSpriteSheet('Skeleton');
   const remains=new Map(),monsterFigures=new Map(),attackFigures=new Map();
   await Promise.all(battle.species.map(async id=>{
@@ -800,7 +803,8 @@ async function start() {
         }
         if(control>3) {
           // Drawviews.s blit_block mirrors the lower leaf and clips both leaves to the doorway.
-          const frame=(c.terrain>>>23)&31,range=Math.min(4,Math.max(1,depth));
+          // Auxiliary door ledges use d6=0 in Drawviews.s; only the block leaves move.
+          const frame=s===block?.[index]?(c.terrain>>>23)&31:0,range=Math.min(4,Math.max(1,depth));
           const heights=[2,6,9,12,14,16,18,20,21,22,23];
           const rise=frame?Math.floor((range===4 && frame===9?16:heights[Math.min(frame,10)])*[0,23,13,10,6][range]/23):0;
           ctx.save();
@@ -1046,6 +1050,11 @@ async function start() {
   }
   function animateHUD(){
     if(paused()) {ambient.stop();return;}
+    if(shakeFrame){
+      const offset=SHAKE_TABLE[shakeFrame++];
+      document.querySelector('main').style.transform=offset===undefined?'':'translateY('+offset+'px)';
+      if(offset===undefined) shakeFrame=0;
+    }
     warningClock=(warningClock+1)&63;fieldClock=(fieldClock+1)%90;
     let redrawWorld=false;
     players.forEach((p,i)=>{
@@ -1139,7 +1148,9 @@ async function start() {
       }
       draw(state.worldChanged);
       syncAtmos();
-      if(!paused() && sound.ready()) for(const event of state.events){
+      if(!paused()) for(const event of state.events){
+        if(event.shake) shake(event.shake);
+        if(!sound.ready()) continue;
         const name=event.name || effects[event.sample];
         if(name) sound(name,event.period,event.channel??0,event.key===undefined?event.volume??63:machineryVolume(event.key,63),event.key===undefined?0:machineryPan(event.key));
       }

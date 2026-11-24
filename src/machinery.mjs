@@ -1,4 +1,4 @@
-export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCargo=()=>{},hatchAt=()=>{}) {
+export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCargo=()=>{},hatchAt=()=>{},onShake=()=>{}) {
   const plane=level.width*level.depth;
   const blockMask=(63<<11)|2, floorMask=(3<<9)|1, variant=31<<23;
   const key=(x,y,z)=>(z*level.depth+y)*level.width+x;
@@ -166,7 +166,14 @@ export function machinery(level,players,play=()=>{},monsterAt=()=>false,moveCarg
       const below=b.key-plane;
       if(below<0 || cell(b.key).floorType!==null || cell(below).blockType!==null || occupants(below).length) continue;
       if(monsterAt(below%level.width,Math.floor(below/level.width)%level.depth,Math.floor(below/plane))) continue;
+      // Main.s sounds and shakes on the field in which a falling block lands,
+      // rather than on every downward step. Keep the support cell before moving.
+      const destination=cell(below),support=below>=plane?cell(below-plane):null;
+      const type=support?.blockType;
+      const lands=destination.floorType!==null || !!(support?.terrain&64) ||
+        (type!==null && type!==undefined && (type<8 || type>47 || (type>=16 && type<=21) || (type>=28 && type<=31)));
       moveBlock(b,below);moved=true;
+      if(lands) onShake(1);
     }
     return moved;
   }

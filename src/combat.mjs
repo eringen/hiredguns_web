@@ -1,7 +1,7 @@
 import {castAmp} from './psionics.mjs';
 import {extraSamples,variedPeriod} from './samples.mjs';
 const vectors=[[0,-1],[1,0],[0,1],[-1,0]];
-export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>{},onTeleport=(p,x,y,floor)=>Object.assign(p,{x,y,floor})) {
+export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>{},onTeleport=(p,x,y,floor)=>Object.assign(p,{x,y,floor}),onShake=()=>{}) {
   const {players}=inventory, actors=[], eggs=[], flames=[], grenades=[];
   let ticks=0;
   const living=p=>p.fitness>0 && !p.exited;
@@ -119,6 +119,8 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
         else hurtMonster(actor,impact);
       }
     }
+    // Main.s starts stun grenades three fields into the explosion envelope.
+    onShake(data.type?20:17);
     play(7,550);
   }
   function advanceGrenade(g) {
