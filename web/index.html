@@ -1,6 +1,11 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" sizes="180x180" href="art/hired-guns-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="art/hired-guns-192.png">
+<link rel="manifest" href="app.json">
 <title>Hired Guns</title>
 <style>
 :root{--game-width:1280px;--screen-height:100vh;color-scheme:dark;background:#101416;color:#e1ddd1;font:16px system-ui}body{max-width:54rem;margin:3vh auto;padding:1rem}
@@ -32,7 +37,7 @@ html:not(.show-details) body.mission{box-sizing:border-box;min-height:100vh;min-
 html:not(.show-details) body.mission main{width:min(var(--game-width),100vw,calc(var(--screen-height) * 320 / 214))}
 html:not(.show-details) body > :is(header,nav,#equipment),html:not(.show-details) body.mission > #status{display:none}
 main button{padding:0;border:0;position:relative;min-width:0;background:black}
-main[data-players="3"] button:nth-of-type(3){grid-column:1 / -1;width:50%;justify-self:center}
+html:not(.handheld) main[data-players="3"] button:nth-of-type(3){grid-column:1 / -1;width:50%;justify-self:center}
 html:not(.show-details) body.mission:has(main[data-players]){grid-template-rows:1fr auto 1fr}
 html:not(.show-details) body.mission:has(main[data-players]) > aside{grid-row:1;align-self:start;text-align:center}
 html:not(.show-details) body.mission main[data-players]{grid-row:2;width:min(var(--game-width),100vw,calc((var(--screen-height) - 5rem) * 320 / 214))}
@@ -55,7 +60,63 @@ body.mission header h1{display:none}body.mission header{justify-content:flex-end
 #death,#briefing{border:0;padding:0;width:min(var(--game-width),100vw,calc(var(--screen-height) * 1.6));max-width:none;max-height:none;background:#000}
 #death{width:min(var(--game-width),100vw,calc(var(--screen-height) * 320 / 212))}
 #death::backdrop,#briefing::backdrop{background:#000}
+#touch-pad,#rotate-device{display:none}
+html.handheld{touch-action:none;overscroll-behavior:none}
+html.handheld body{touch-action:none}
+html.handheld:not(.show-details){height:100%;overflow:hidden}
+html.handheld:not(.show-details) body{
+  position:fixed;top:var(--visible-top,0px);left:var(--visible-left,0px);
+  box-sizing:border-box;width:var(--visible-width,100%);height:var(--screen-height);
+  min-height:0;max-width:none;margin:0;padding:0;overflow:clip
+}
+html.handheld #save-name{font-size:16px}
+@media (orientation:portrait){
+  html.handheld body > :not(#rotate-device){visibility:hidden!important;pointer-events:none!important}
+  html.handheld ::backdrop{background:transparent!important;pointer-events:none}
+  html.handheld #rotate-device{display:grid;position:fixed;inset:0;place-content:center;text-align:center;background:#090c0c;color:#ecbe78;font-size:1.25rem}
+}
+@media (orientation:landscape){
+  html.handheld{--mobile-scale:.8}
+  html.handheld :is(#front,#setup,#death,#briefing){scale:var(--mobile-scale)}
+  body.touch-play{--key-size:clamp(44px,12dvh,56px);--pad-inset:12px}
+  html:not(.show-details) body.mission.touch-play > aside{position:absolute;top:env(safe-area-inset-top,0px);left:50%;transform:translateX(-50%);width:max-content;max-width:100%;text-align:center;z-index:1;background:#101416d9}
+  body.touch-play.mission #touch-pad:not([hidden]){display:block;position:absolute;inset:0;z-index:2;pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  html:not(.show-details) body.mission.touch-play{
+    grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto minmax(0,1fr);
+    --fit-height:calc(var(--screen-height) - 2 * max(env(safe-area-inset-top),env(safe-area-inset-bottom)));
+    --fit-width:calc(var(--visible-width,100vw) - 2 * max(env(safe-area-inset-left),env(safe-area-inset-right)))
+  }
+  /* Each view is 160 × 103. The radio strip spans both columns below the squad. */
+  body.touch-play main{
+    --squad-aspect:calc(640 / 325);
+    grid-template-columns:3fr 1fr;grid-template-rows:repeat(3,auto) auto;align-items:center
+  }
+  body.touch-play main:is([data-players="2"],[data-players="3"]){
+    --squad-aspect:calc(480 / 218);
+    grid-template-columns:2fr 1fr;grid-template-rows:repeat(2,auto) auto
+  }
+  body.touch-play main[data-players="2"]{grid-template-rows:auto auto}
+  html.handheld:not(.show-details) body.mission.touch-play main{
+    grid-area:2 / 1;place-self:center;width:min(var(--fit-width),calc(var(--fit-height) * var(--squad-aspect)))
+  }
+  body.touch-play main button{grid-column:2}
+  body.touch-play main button[aria-pressed="true"]{grid-column:1;grid-row:1 / -2}
+  html.handheld body.touch-play main #ticker{position:static;grid-column:1 / -1;grid-row:-2 / -1}
+  #touch-movement,#touch-actions{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + var(--pad-inset));display:grid;gap:4px;pointer-events:none}
+  #touch-movement{left:calc(env(safe-area-inset-left,0px) + var(--pad-inset));grid-template-columns:repeat(3,var(--key-size));grid-template-areas:". forward ." "left back right"}
+  #touch-movement [data-action="Forward"]{grid-area:forward}
+  #touch-movement [data-action="Back"]{grid-area:back}
+  #touch-movement [data-action="Left"]{grid-area:left}
+  #touch-movement [data-action="Right"]{grid-area:right}
+  #touch-actions{right:calc(env(safe-area-inset-right,0px) + var(--pad-inset));width:clamp(124px,15vw,160px);grid-template-columns:repeat(2,minmax(0,1fr))}
+  #touch-pad button{pointer-events:auto;touch-action:none;min-height:var(--key-size);padding:2px;background:rgb(40 56 45 / 52%);border:1px solid #b6bda780;border-radius:8px;color:#f3edda;font:600 clamp(12px,1.6vw,15px) system-ui}
+  #touch-movement button{font-size:1.2rem}
+  #touch-pad button:active{background:#81734bcf}
+  #touch-actions [data-action="primary"]{background:rgb(118 84 51 / 62%)}
+  body.touch-play main button{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+}
 </style>
+<div id="rotate-device" role="status">Rotate your device to landscape to play</div>
 <div id="front" popover="manual" role="dialog" aria-label="Hired Guns main menu">
 <canvas width="640" height="400" aria-hidden="true" hidden></canvas>
 <button aria-label="Training" data-group="Training"></button><button aria-label="Full campaign game" data-group="Campaign"></button>
@@ -65,7 +126,17 @@ body.mission header h1{display:none}body.mission header{justify-content:flex-end
 <dialog id="death" aria-label="Game over" tabindex="-1"><img src="art/death.png" width="320" height="212" alt="Squad lost. Press a key or tap to return to the main menu."></dialog>
 <dialog id="briefing" aria-label="Mission briefing"><canvas width="640" height="400"></canvas></dialog>
 <header><h1>Hired Guns</h1><button id="menu" disabled>Mission menu</button></header>
-<main aria-label="Squad views"><div id="ticker" role="img" aria-label="Squad radio"><canvas width="320" height="8" aria-hidden="true"></canvas></div></main><nav aria-label="Movement"></nav>
+<main aria-label="Squad views"><div id="ticker" role="img" aria-label="Squad radio"><canvas width="320" height="8" aria-hidden="true"></canvas></div></main><section id="touch-pad" hidden aria-label="Touch controls">
+<div id="touch-movement" role="group" aria-label="Movement">
+<button data-action="Forward" aria-label="Forward">▲</button><button data-action="Left" aria-label="Turn left">↶</button>
+<button data-action="Back" aria-label="Back">▼</button><button data-action="Right" aria-label="Turn right">↷</button>
+</div>
+<div id="touch-actions">
+<button data-action="member" title="Select next character"></button><button data-action="store">Store</button>
+<button data-action="primary">Fire</button><button data-action="pull">Pull / reload</button>
+<button data-action="Use">Use</button><button data-action="power" hidden>Throw power</button><button data-action="menu">Menu</button>
+<button data-action="Strafe left" aria-label="Strafe left">⇠</button><button data-action="Strafe right" aria-label="Strafe right">⇢</button>
+</div></section><nav aria-label="Movement"></nav>
 <details id="equipment"><summary>Equipment controls</summary><section aria-label="Inventory"><h2>Inventory</h2><p id="hands"></p><label>Pack <select id="pack"></select></label>
 <div id="inspect"><img id="item-art" alt="" hidden><p id="description"></p></div>
 <div class="actions"><button id="equip">Equip</button><button id="stow">Stow held item</button><button id="reload">Reload</button><button id="drop">Drop held item</button><button id="pickup">Pick up</button></div>

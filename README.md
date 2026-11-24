@@ -95,3 +95,16 @@ Each player controls one character and sees the selected squad's viewports.
 In View, Space fires, Shift+Up selects hand grenade power, and Shift+Down
 pulls a block or reloads from compatible ammunition. Campaign progress belongs
 to the room. Empty rooms expire after two minutes. Disk saves are single-player.
+
+### Phone and tablet controls
+
+Tap the original view regions to walk, turn, strafe, or interact. Hold a region
+for about half a second and release to use its right-click action, such as
+pulling in the center of the view. When standing on an item, tap its lower-left icon or the **Use** button (now labeled **Pick up**) to put it in your pack. Drag away to cancel the tap.
+
+On phones and tablets, rotate to landscape. Your active character fills the large view on the left. In solo play, tap a teammate’s smaller view to select them. In multiplayer, each device enlarges its own character. Use the left pad to walk forward, walk backward, or turn. Hold the horizontal arrows on the right to strafe. Both thumbs can act at once. Hold **Fire** for repeated bursts,
+use **Pull / reload** to pull a block or reload, and tap **Throw power** to
+cycle the strength of a held hand grenade. **Store** opens the pack, where
+**Equip** and **Stow** act on the selected item. Tap the character name to
+cycle through the squad in single-player. In multiplayer the name shows which
+character you control.

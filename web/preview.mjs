@@ -14,6 +14,31 @@ import {inventorySession} from './inventory.mjs';
 import {extraSamples,movementAudio,ambientAudio,environmentSound} from './samples.mjs';
 import {readLevel} from './level.mjs';
 
+const handheld=/iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.userAgentData?.mobile ||
+  (/Android/i.test(navigator.userAgent) && matchMedia('(any-pointer: coarse)').matches) ||
+  (navigator.platform==='MacIntel' && /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
+const portrait=matchMedia('(orientation: portrait)');
+if(handheld){
+  document.documentElement.classList.add('handheld');
+  document.querySelector('meta[name="viewport"]').content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=contain';
+  const viewport=window.visualViewport;
+  if(viewport){
+    const style=document.documentElement.style;
+    function fitViewport(){
+      style.setProperty('--screen-height',viewport.height+'px');
+      style.setProperty('--visible-width',viewport.width+'px');
+      style.setProperty('--visible-left',viewport.offsetLeft+'px');
+      style.setProperty('--visible-top',viewport.offsetTop+'px');
+    }
+    fitViewport();
+    viewport.addEventListener('resize',fitViewport);
+    viewport.addEventListener('scroll',fitViewport);
+  }
+  for(const type of ['gesturestart','gesturechange','gestureend'])
+    document.addEventListener(type,e=>e.preventDefault(),{passive:false});
+  document.addEventListener('keydown',e=>{if(portrait.matches){e.preventDefault();e.stopImmediatePropagation();}},true);
+}
+
 // Evaluating the bare name in the developer console reveals the HTML controls.
 Object.defineProperty(window,'details',{get(){
   document.documentElement.classList.add('show-details');
@@ -94,6 +119,7 @@ function slots() {
 }
 
 async function start() {
+  if(handheld && portrait.matches) await new Promise(resolve=>portrait.addEventListener('change',resolve,{once:true}));
   const room=new URLSearchParams(location.search).get('room');
   let onlineCommand,watchChart=false,shareChart;
   if(!room && performance.getEntriesByType('navigation')[0]?.type==='reload') {
@@ -454,7 +480,7 @@ async function start() {
   const atmosName='Atmos'+String(entry.atmos).padStart(2,'0');
   const ambient=ambientAudio(Object.fromEntries(await Promise.all([atmosName,'Water'].map(async n=>[n,await load('atmos/'+n+'.sfx')]))));
   const death=document.querySelector('#death');
-  const paused=()=>setup.open || death.open || document.hidden;
+  const paused=()=>(handheld && portrait.matches) || setup.open || death.open || document.hidden;
   const syncAtmos=()=>{
     if(paused() || briefing.open) {ambient.stop();motor.stop();return;}
     ambient.update(environmentSound(level,players,entry.atmos));
@@ -562,12 +588,19 @@ async function start() {
   const scenes=players.map(()=>{const c=document.createElement('canvas');c.width=144;c.height=84;return c;});
   const panelNames=['View','Store','DTS','Stats','','','Item information'];
   function tab(i,mode) {
+    if(mode===2 && panels[i].mode!==2 && (!room || i===selected)){
+      // DTS.8svx specifies 9943 Hz in its VHDR.
+      sound('DTS',3546895/9943,i%2);
+    }
     panels[i].mode=mode;
     if(mode===2) scrollMap(panels[i],players[i].x,players[i].y);
     document.querySelector('#equipment').open=mode===1 || mode===6;
   }
   const mouseZones=JSON.parse(new TextDecoder().decode(await load('mouse.json')));
   const actions={1:'Forward',2:'Back',3:'Left',4:'Right',5:'Use',6:'Pull',13:'Strafe right',14:'Strafe left'};
+  const pad=document.querySelector('#touch-pad');
+  if(handheld){pad.hidden=false;document.body.classList.add('touch-play');}
+  const panelTouches=new Map();
   const buttons=players.map((p,i)=>{
     const button=document.createElement('button'), canvas=document.createElement('canvas');
     canvas.width=160; canvas.height=103;
@@ -587,37 +620,68 @@ async function start() {
       }
       return mouseZones[table]?.find(([l,t,r,b])=>x>=l && x<=r && y>=t && y<=b);
     }
-    button.onpointermove=e=>{
+    function moveCursor(e){
+      if(e.pointerType==='touch' || 'identifier' in e) return;
       const zone=region(e);
       canvas.style.cursor='url(art/mouse'+(zone?.[4]??0)+'.png) 0 0, auto';
-    };
+    }
     button.oncontextmenu=e=>e.preventDefault();
-    button.onpointerdown=e=>{
-      if(e.button!==0 && e.button!==2) return;
-      e.preventDefault();
+    function activate(e,code){
+      if(paused()) return;
       if(room) {
         button.focus({preventScroll:true});
-        const code=region(e)?.[e.button===2?6:5];
         const special={15:'Pickup hands',22:'Pickup pack',23:'Drop',16:'Follow',20:'Center map',17:'Use held',19:'Item info',21:'Store'};
         const action=code>=26 && code<=29 ? 'Throw '+(29-code) : special[code] ?? actions[code] ?? ['View','Store','DTS','Stats'][code-9];
         if(action) onlineCommand?.(i,action,true);
         return;
       }
       unlock();selected=i;
-      const zone=region(e),code=zone?.[e.button===2?6:5],panel=panels[i];
+      const panel=panels[i];
       if(!p.fitness || p.exited) {draw();return;}
       if(code>=9 && code<=12) tab(i,code-9);
       else if(code===15 || code===22) feedback.textContent=inventory.pickup(p,code===15,panel.index);
       else if(code===23) feedback.textContent=inventory.drop(p);
       else if(code===16) {p.inTeam=!p.inTeam;leader=-1;}
       else if(code>=26 && code<=29) battle.throwGrenade(p,29-code);
-      else if(code===17) {draw(!!battle.use(p,panel.index));button.onpointermove(e);return;}
+      else if(code===17) {draw(!!battle.use(p,panel.index));moveCursor(e);return;}
       else if(code===19 && p.held) tab(i,6);
       else if(code===21) tab(i,1);
       else if(code===20) scrollMap(panel,p.x,p.y);
-      else if(actions[code]) {act(actions[code],true);button.onpointermove(e);return;}
-      draw();button.onpointermove(e);
+      else if(actions[code]) {act(actions[code],true);moveCursor(e);return;}
+      draw();moveCursor(e);
     };
+    function beginPanelTouch(point,time){
+      if(handheld && !room && i!==selected){
+        return end=>{if(end){selected=i;draw(false);}};
+      }
+      const zone=region(point),mode=panels[i].mode;
+      return end=>{
+        if(end && mode===panels[i].mode && zone===region(end.point)){
+          const secondary=zone?.[6]===22 || (end.time-time>=450 && zone?.[6]);
+          activate(end.point,zone?.[secondary?6:5]);
+        }
+      };
+    }
+    panelTouches.set(canvas,beginPanelTouch);
+    let contact;
+    button.onpointerdown=e=>{
+      if(e.button!==0 && e.button!==2) return;
+      if(handheld && e.pointerType==='touch') return;
+      e.preventDefault();
+      if(e.pointerType!=='touch'){activate(e,region(e)?.[e.button===2?6:5]);return;}
+      if(!e.isPrimary || paused()) return;
+      contact={id:e.pointerId,x:e.clientX,y:e.clientY,finish:beginPanelTouch(e,e.timeStamp)};
+      button.setPointerCapture(e.pointerId);
+    };
+    button.onpointermove=e=>{
+      if(contact && contact.id===e.pointerId && Math.hypot(e.clientX-contact.x,e.clientY-contact.y)>12) contact=null;
+      moveCursor(e);
+    };
+    button.onpointerup=e=>{
+      if(contact?.id!==e.pointerId) return;
+      contact.finish({point:e,time:e.timeStamp});contact=null;
+    };
+    button.onlostpointercapture=button.onpointercancel=()=>{contact=null;};
     button.onclick=e=>{if(!room && !e.detail){selected=i;draw();}};
     document.querySelector('main').append(button);
     return button;
@@ -792,6 +856,8 @@ async function start() {
       hud.draw(button.firstChild.getContext('2d'),scene,p,panel.mode,panel.index,inventory.weight(p),panel,i,warningClock);
     });
     const p = players[selected];
+    const ground=inventory.at(p.x,p.y,p.floor);
+    if(!pad.hidden) updatePad(ground);
     if(!room) finishMission();
     const previous = panels[selected].index;
     if(pack.length!==p.pack.length || p.pack.some((item,i)=>pack.options[i].text!==itemName(item)))
@@ -803,7 +869,6 @@ async function start() {
     document.querySelector('#stow').disabled=!p.held || p.pack.length>=30;
     inspect();
     document.querySelector('#hands').textContent=p.character.name+' · Held: '+(p.held?itemName(p.held):'nothing');
-    const ground=inventory.at(p.x,p.y,p.floor);
     document.querySelector('#pickup').disabled=!ground;
     document.querySelector('#ground').textContent='At your feet: '+(ground?itemName(ground):'nothing');
     document.querySelector('#status').textContent=p.character.name+(p.exited?' · Exited':'')+' · Floor '+p.floor+' · '+['North','East','South','West'][p.dir];
@@ -831,6 +896,140 @@ async function start() {
     draw();
   };
   document.querySelector('#drop').onclick=()=>{feedback.textContent=inventory.drop(players[selected]);draw();};
+  const padButtons=Object.fromEntries([...pad.querySelectorAll('button')].map(b=>[b.dataset.action,b]));
+  const padButton=name=>padButtons[name];
+  const labelPad=(b,label)=>{if(b.textContent!==label) b.textContent=label;};
+  function updatePad(ground){
+    const p=players[selected],mode=panels[selected].mode;
+    const member=padButton('member');
+    labelPad(member,p.character.name);member.disabled=!!room;
+    const fire=padButton('primary');
+    labelPad(fire,p.exited?'Return':mode===1?'Equip':'Fire');
+    fire.disabled=!p.fitness || (!p.exited && mode!==0 && mode!==1);
+    const pull=padButton('pull');
+    labelPad(pull,mode===1?'Stow':'Pull / reload');
+    pull.disabled=!p.fitness || p.exited || (mode!==0 && mode!==1);
+    labelPad(padButton('Use'),mode===0 && ground?'Pick up':'Use');
+    for(const name of ['Strafe left','Strafe right','Use']) padButton(name).disabled=mode!==0 || !p.fitness || p.exited;
+    padButton('power').hidden=mode!==0 || equipment.items[p.held?.id]?.category!==21;
+    labelPad(padButton('store'),mode===0?'Store':'View');
+  }
+  function touchAction(command){
+    if(paused() || outcome) return;
+    const p=players[selected],mode=panels[selected].mode;
+    if(command==='member'){
+      if(!room){selected=(selected+1)%players.length;draw(false);}
+      return;
+    }
+    if(command==='menu'){if(room) onlineCommand?.(selected,'Pause');else openMenu();return;}
+    if(command==='store'){
+      if(room) onlineCommand?.(selected,mode===0?'Store':'View');
+      else {tab(selected,mode===0?1:0);draw();}
+      return;
+    }
+    if(p.exited && command==='primary'){
+      if(room) onlineCommand?.(selected,'Return');else returnFromExit(selected);
+      return;
+    }
+    if(command==='Pickup pack'){
+      if(room) onlineCommand?.(selected,command);
+      else {feedback.textContent=inventory.pickup(p,false,panels[selected].index);draw();}
+      return;
+    }
+    if(['Use','Left','Right','Forward','Back','Strafe left','Strafe right'].includes(command)){
+      if(room) onlineCommand?.(selected,command);else act(command);return;
+    }
+    const action=command==='primary'?(mode===1?'Right':'Fire'):command==='pull'?(mode===1?'Left':'Pull'):'Throw power';
+    if(room) onlineCommand?.(selected,action);else act(action);
+  }
+  function returnFromExit(i){
+    const p=players[i];
+    if(!outcome && p.exited && !players.some(q=>q!==p && !q.exited && q.fitness && q.x===p.x && q.y===p.y && q.floor===p.floor) && !battle.at(p.x,p.y,p.floor)){
+      p.exited=false;selected=i;draw();
+    }
+  }
+  const movement=document.querySelector('#touch-movement');
+  function padCommand(button){
+    const action=button.dataset.action;
+    const p=players[selected];
+    if(action==='Use' && panels[selected].mode===0 && inventory.at(p.x,p.y,p.floor)) return 'Pickup pack';
+    return action;
+  }
+  function beginPadPress(button){
+    const owner=selected,mode=panels[owner].mode,action=padCommand(button);
+    const fire=action==='primary' && mode===0 && !players[owner].exited;
+    if(!fire && !movement.contains(button) && !action.startsWith('Strafe ')) return end=>{if(end && !button.disabled) touchAction(action);};
+    touchAction(action);
+    const timer=setInterval(()=>{
+      if(paused() || outcome || selected!==owner || panels[owner].mode!==mode || button.disabled) clearInterval(timer);
+      else touchAction(action);
+    },fire?120:175);
+    return ()=>clearInterval(timer);
+  }
+  const contacts=new Map();
+  function finishContact(id,end){
+    const press=contacts.get(id);
+    if(!press) return;
+    contacts.delete(id);
+    press.finish(end);
+  }
+  function releaseControls(){
+    for(const id of contacts.keys()) finishContact(id);
+  }
+  if(handheld){
+    // iOS can retarget a finger contact to a nearby clickable element. Route
+    // from the raw touch center against the painted layout, including gaps.
+    function touchTarget(touch){
+      const el=document.elementFromPoint(touch.clientX,touch.clientY);
+      return el?.closest('#touch-pad button, main canvas');
+    }
+    document.addEventListener('touchstart',e=>{
+      if(paused() || portrait.matches) return;
+      for(const touch of e.changedTouches){
+        const target=touchTarget(touch);
+        const beginPanel=panelTouches.get(target);
+        if(!beginPanel && !pad.contains(target)) continue;
+        e.preventDefault();
+        if(target.disabled || [...contacts.values()].some(press=>press.target===target)) continue;
+        const finish=beginPanel?beginPanel(touch,e.timeStamp):beginPadPress(target);
+        contacts.set(touch.identifier,{target,x:touch.clientX,y:touch.clientY,finish});
+      }
+    },{passive:false});
+    function matchesPress(touch,press){
+      return touchTarget(touch)===press.target && (!panelTouches.has(press.target) ||
+        Math.hypot(touch.clientX-press.x,touch.clientY-press.y)<=12);
+    }
+    document.addEventListener('touchmove',e=>{
+      for(const touch of e.changedTouches){
+        const press=contacts.get(touch.identifier);
+        if(press && !matchesPress(touch,press)) finishContact(touch.identifier);
+      }
+    });
+    for(const type of ['touchend','touchcancel']) document.addEventListener(type,e=>{
+      for(const touch of e.changedTouches){
+        const press=contacts.get(touch.identifier);
+        if(press) finishContact(touch.identifier,type==='touchend' && matchesPress(touch,press) && {point:touch,time:e.timeStamp});
+      }
+    });
+  }
+  // Keep mouse, stylus and keyboard activation on hybrid tablets.
+  pad.onpointerdown=e=>{
+    const button=e.target.closest('button');
+    if(e.pointerType==='touch' || e.button!==0 || !button || button.disabled || paused()) return;
+    e.preventDefault();button.setPointerCapture(e.pointerId);
+    contacts.set('pointer'+e.pointerId,{target:button,finish:beginPadPress(button)});
+  };
+  pad.onpointermove=pad.onpointerup=e=>{
+    const id='pointer'+e.pointerId,press=contacts.get(id);
+    if(!press) return;
+    const inside=press.target.contains(document.elementFromPoint(e.clientX,e.clientY));
+    if(!inside || e.type==='pointerup') finishContact(id,inside);
+  };
+  pad.onpointercancel=pad.onlostpointercapture=e=>finishContact('pointer'+e.pointerId);
+  pad.onclick=e=>{const b=e.target.closest('button');if(b && !b.disabled && e.detail===0) touchAction(padCommand(b));};
+  window.addEventListener('blur',releaseControls);
+  document.addEventListener('visibilitychange',releaseControls);
+  portrait.addEventListener('change',releaseControls);
   function act(action,mouse=false,who=selected,automatic=false){
     const p=players[who];
     if(!p.fitness || p.exited || outcome) return;
@@ -969,10 +1168,7 @@ async function start() {
     if (paused()) return;
     const fkey=['F1','F3','F2','F4'].indexOf(e.key);
     if(!outcome && fkey>=0 && players[fkey].exited) {
-      e.preventDefault();const p=players[fkey];
-      if(!players.some(q=>q!==p && !q.exited && q.fitness && q.x===p.x && q.y===p.y && q.floor===p.floor) && !battle.at(p.x,p.y,p.floor)) {
-        p.exited=false;selected=fkey;draw();
-      }
+      e.preventDefault();returnFromExit(fkey);
       return;
     }
     if (e.key==='Escape') { e.preventDefault(); openMenu(); return; }
