@@ -12,7 +12,7 @@ import {machinery} from './machinery.mjs';
 import {scanTerrain,scrollMap,scannerType} from './dts.mjs';
 import {hudGraphics} from './hud.mjs';
 import {inventorySession} from './inventory.mjs';
-import {extraSamples,movementAudio,ambientAudio,environmentSound} from './samples.mjs';
+import {sourcePan,loadAudio,extraSamples,movementAudio,ambientAudio,environmentSound} from './samples.mjs';
 import {readLevel} from './level.mjs';
 
 const handheld=/iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.userAgentData?.mobile ||
@@ -395,16 +395,16 @@ async function start() {
       return terrain[(first===8?'door1open':'door1')+(side?'side':'front')];
     }
   }
-  const [step,bump,reload] = await Promise.all(['Footstep.pcm','Bump.pcm','GunReload.pcm'].map(load));
+
   const boxes = Array.from({length:5},(_,i)=>terrain['container'+(i+1)]);
   const [figures,hud]=await Promise.all([
     Promise.all(squad.map(id=>Promise.all([0,1,2,3].map(dir=>loadSpriteSheet('figure'+id+'-'+dir))))),
     hudGraphics(load,palette,equipment,level,prefix)
   ]);
   const effects=['','NewGun1','NewGun2','GunEmpty','GunReload','EggHatch','','Explosion','LaserCrack','Arc','Cast'];
-  const samples={step,bump,reload};
-  await Promise.all([...effects,...extraSamples].filter(Boolean).map(async name=>{samples[name]=await load(name+'.pcm');}));
-  for(const name of ['DoorOpening','DoorClosed','Button','BlockSlide','Teleport']) samples[name]=await load(name+'.pcm');
+  const atmosName='Atmos'+String(entry.atmos).padStart(2,'0');
+  const samples=await loadAudio([...new Set(['Footstep','Bump','GunReload',...effects,...extraSamples,'DoorOpening','DoorClosed','Button','BlockSlide','Teleport',atmosName,'Water'].filter(Boolean))]);
+  samples.step=samples.Footstep;samples.bump=samples.Bump;samples.reload=samples.GunReload;
   const sound=movementAudio(samples);
   const inventory = inventorySession(level,equipment,squad,sound);
   const players = inventory.players;
@@ -413,30 +413,31 @@ async function start() {
   }
 
   await hud.preload(players);
-  const motor=ambientAudio({DoorOpening:await load('DoorOpening.8svx'),Lift:await load('Lift.8svx')});
+  const motor=ambientAudio(samples);
+  function machineryPan(key){
+    return sourcePan(players[selected],key%level.width,Math.floor(key/level.width)%level.depth,Math.floor(key/(level.width*level.depth)));
+  }
   function machineryVolume(key,base){
+    const p=players[selected];
     const x=key%level.width,y=Math.floor(key/level.width)%level.depth,z=Math.floor(key/(level.width*level.depth));
-    let distance=10;
-    for(const p of players) if(p.fitness && !p.exited)
-      distance=Math.min(distance,Math.abs(x-p.x)+Math.abs(y-p.y)+Math.abs(z-p.floor));
+    const distance=Math.min(10,Math.abs(x-p.x)+Math.abs(y-p.y)+Math.abs(z-p.floor));
     return Math.round(base*(10-distance)/10);
   }
-  const machines=machinery(level,players,(name,period,key)=>{if(name!=='DoorOpening') sound(name,period,2,machineryVolume(key,63));},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos));
-  const atmosName='Atmos'+String(entry.atmos).padStart(2,'0');
-  const ambient=ambientAudio(Object.fromEntries(await Promise.all([atmosName,'Water'].map(async n=>[n,await load('atmos/'+n+'.sfx')]))));
+  const machines=machinery(level,players,(name,period,key)=>{if(name!=='DoorOpening') sound(name,period,2,machineryVolume(key,63),machineryPan(key));},(...pos)=>battle.at(...pos),inventory.moveCargo,(...pos)=>battle.hatchAt(...pos));
+  const ambient=ambientAudio(samples);
   const death=document.querySelector('#death');
   const paused=()=>(handheld && portrait.matches) || setup.open || death.open || document.hidden;
   const syncAtmos=()=>{
     if(paused() || briefing.open) {ambient.stop();motor.stop();return;}
     ambient.update(environmentSound(level,players,entry.atmos));
     for(const lift of level.lifts){
-      if(machines.movingLifts.has(lift)) motor.update({name:'Lift',period:412,volume:machineryVolume(lift.key,40)},lift);
+      if(machines.movingLifts.has(lift)) motor.update({name:'Lift',period:412,volume:machineryVolume(lift.key,40),pan:machineryPan(lift.key)},lift);
       else motor.stop(lift);
     }
     for(const door of level.doors){
       if(!door.key) continue;
       if((door.dir===1 || door.dir===2) && level.cell(door.key%23,Math.floor(door.key/23)%23,Math.floor(door.key/529)).blockType!==null)
-        motor.update({name:'DoorOpening',period:428,volume:machineryVolume(door.key,63)},door.key);
+        motor.update({name:'DoorOpening',period:428,volume:machineryVolume(door.key,63),pan:machineryPan(door.key)},door.key);
       else motor.stop(door.key);
     }
   };
@@ -1140,7 +1141,7 @@ async function start() {
       syncAtmos();
       if(!paused() && sound.ready()) for(const event of state.events){
         const name=event.name || effects[event.sample];
-        if(name) sound(name,event.period,event.channel??0,event.key===undefined?event.volume??63:machineryVolume(event.key,63));
+        if(name) sound(name,event.period,event.channel??0,event.key===undefined?event.volume??63:machineryVolume(event.key,63),event.key===undefined?0:machineryPan(event.key));
       }
     },view=>missionUI.restoreChart(view));
     return;

@@ -43,6 +43,7 @@ preview-build:
 	$(PYTHON) tools/build-world-png.py
 	$(PYTHON) tools/build-hud-png.py
 	$(PYTHON) tools/build-menu-png.py
+	$(PYTHON) tools/build-audio-wav.py
 
 preview: preview-build
 	$(PYTHON) tools/serve.py

@@ -1,28 +1,34 @@
-// PAL Paula playback rate = audio clock / period. BODY data is signed 8-bit PCM.
+// WAV samples retain the original sample count at a nominal 22050 Hz.
 export const extraSamples=['','Bark','Bat','Grumble','Drip','DTS','EchoScream','FemaleGrunt','Gun','Lift','MaleGrunt','MetalClang','Roar','Swipe','Swish','Voice','Thunder','Unlock'];
 export function variedPeriod(period) {
   return Math.max(90,period-64+Math.floor(Math.random()*128));
 }
+export async function loadAudio(names) {
+  const context=new OfflineAudioContext(1,1,22050);
+  const response=await fetch('art/audio/loops.json');
+  if(!response.ok) throw new Error('Could not load audio loop metadata');
+  const loops=await response.json();
+  const entries=await Promise.all(names.map(async name=>{
+    const response=await fetch('art/audio/'+name+'.wav');
+    if(!response.ok) throw new Error('Could not load audio '+name);
+    const audio=await context.decodeAudioData(await response.arrayBuffer());
+    return [name,{audio,...loops[name]}];
+  }));
+  return Object.fromEntries(entries);
+}
 export function movementAudio(samplesByName) {
   let context;
-  const buffers = new Map();
-  function play(kind, period, channel, volume=63) {
+  function play(kind, period, channel, volume=63, pan=0) {
     if (!window.AudioContext || !period || volume<=0) return;
     play.unlock();
-    if (!buffers.has(kind)) {
-      const raw = samplesByName[kind];
-      const buffer = context.createBuffer(1, raw.length, 22050);
-      const samples = new Int8Array(raw.buffer, raw.byteOffset, raw.length);
-      buffer.getChannelData(0).set(Float32Array.from(samples, value=>value/128));
-      buffers.set(kind,buffer);
-    }
     const voice = context.createBufferSource();
-    voice.buffer=buffers.get(kind);
+    voice.buffer=samplesByName[kind].audio;
     voice.playbackRate.value=3546895/(period*22050);
     const gain=context.createGain();
     gain.gain.value=volume/63;
-    voice.connect(gain);gain.connect(context.destination);
-    voice.onended=()=>{voice.disconnect();gain.disconnect();};
+    const panner=context.createStereoPanner();panner.pan.value=pan;
+    voice.connect(gain);gain.connect(panner);panner.connect(context.destination);
+    voice.onended=()=>{voice.disconnect();gain.disconnect();panner.disconnect();};
     voice.start();
   }
   play.unlock=()=>{
@@ -48,23 +54,6 @@ export function environmentSound(level,players,atmos) {
 export function ambientAudio(files) {
   let context;
   const voices=new Map();
-  const buffers=new Map();
-  function buffer(name) {
-    if(buffers.has(name)) return buffers.get(name);
-    const bytes=files[name],view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-    let start,end,audio;
-    for(let offset=12;offset+8<=bytes.length;) {
-      const id=String.fromCharCode(...bytes.subarray(offset,offset+4)),size=view.getUint32(offset+4),body=offset+8;
-      if(id==='VHDR') {start=view.getUint32(body);end=start+view.getUint32(body+4);}
-      if(id==='BODY') {
-        audio=context.createBuffer(1,size,22050);
-        audio.getChannelData(0).set(Float32Array.from(new Int8Array(bytes.buffer,bytes.byteOffset+body,size),s=>s/128));
-      }
-      offset=body+size+(size&1);
-    }
-    const result={audio,start:start/22050,end:end/22050};
-    buffers.set(name,result);return result;
-  }
   function stop(slot) {
     if(slot===undefined){for(const key of voices.keys()) stop(key);return;}
     const entry=voices.get(slot);
@@ -78,8 +67,13 @@ export function ambientAudio(files) {
   function update(spec,slot='ambient') {
     if(!context || context.state!=='running') return;
     if(!spec.volume){stop(slot);return;}
+    const pan=spec.pan??0;
     const signature=spec.name+':'+spec.period,entry=voices.get(slot);
     if(entry?.signature===signature){
+      if(entry.pan!==pan){
+        entry.panner.pan.setTargetAtTime(pan,context.currentTime,0.04);
+        entry.pan=pan;
+      }
       if(entry.volume!==spec.volume){
         entry.gain.gain.setTargetAtTime(spec.volume/63,context.currentTime,0.04);
         entry.volume=spec.volume;
@@ -87,13 +81,21 @@ export function ambientAudio(files) {
       return;
     }
     stop(slot);
-    const {audio,start,end}=buffer(spec.name);
+    const {audio,start,end}=files[spec.name];
     const voice=context.createBufferSource();voice.buffer=audio;voice.loop=true;
     voice.loopStart=start;voice.loopEnd=end;voice.playbackRate.value=3546895/(22050*spec.period);
     const gain=context.createGain();gain.gain.value=spec.volume/63;
-    voice.connect(gain);gain.connect(context.destination);voice.start();
-    voice.onended=()=>{voice.disconnect();gain.disconnect();};
-    voices.set(slot,{voice,gain,volume:spec.volume,signature});
+    const panner=context.createStereoPanner();panner.pan.value=pan;
+    voice.connect(gain);gain.connect(panner);panner.connect(context.destination);voice.start();
+    voice.onended=()=>{voice.disconnect();gain.disconnect();panner.disconnect();};
+    voices.set(slot,{voice,gain,panner,pan,volume:spec.volume,signature});
   }
   return {unlock,update,stop};
+}
+
+export function sourcePan(listener,x,y,floor) {
+  const dx=x-listener.x,dy=y-listener.y,dz=floor-listener.floor;
+  const distance=Math.hypot(dx,dy,dz);
+  const right=[[1,0],[0,1],[-1,0],[0,-1]][listener.dir];
+  return distance ? (dx*right[0]+dy*right[1])/distance : 0;
 }
