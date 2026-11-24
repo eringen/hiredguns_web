@@ -73,7 +73,16 @@ html.handheld #save-name{font-size:16px}
 @media (orientation:portrait){
   html.handheld body > :not(#rotate-device){visibility:hidden!important;pointer-events:none!important}
   html.handheld ::backdrop{background:transparent!important;pointer-events:none}
-  html.handheld #rotate-device{display:grid;position:fixed;inset:0;place-content:center;text-align:center;background:#090c0c;color:#ecbe78;font-size:1.25rem}
+  html.handheld #rotate-device{display:grid;position:fixed;inset:0;place-content:center;justify-items:center;gap:1.5rem;padding:1.5rem;text-align:center;background:#090c0c;color:#ecbe78;font-size:1.25rem;pointer-events:none}
+  .rotate-icon{position:relative;width:160px;height:132px}
+  .rotate-phone{position:absolute;box-sizing:border-box;border:3px solid;border-radius:10px;background:#171e20}
+  .rotate-phone::after{content:"";position:absolute;background:currentColor;border-radius:4px}
+  .rotate-phone.portrait{width:47px;height:76px;top:10px;left:13px;color:#a5967f}
+  .rotate-phone.portrait::after{width:16px;height:3px;bottom:5px;left:12px}
+  .rotate-phone.landscape{width:79px;height:49px;right:7px;bottom:9px}
+  .rotate-phone.landscape::after{width:3px;height:16px;right:5px;top:13px}
+  .rotate-arrow{position:absolute;left:68px;top:16px;width:47px;height:46px;border:3px solid;border-bottom:0;border-left:0;border-top-right-radius:46px}
+  .rotate-arrow::after{content:"";position:absolute;right:-8px;bottom:1px;width:12px;height:12px;border:solid;border-width:0 3px 3px 0;transform:rotate(45deg)}
 }
 @media (orientation:landscape){
   html.handheld{--mobile-scale:.8}
@@ -117,7 +126,14 @@ html.handheld #save-name{font-size:16px}
   body.touch-play main button{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 }
 </style>
-<div id="rotate-device" role="status">Rotate your device to landscape to play</div>
+<div id="rotate-device" role="status">
+  <div class="rotate-icon" aria-hidden="true">
+    <span class="rotate-phone portrait"></span>
+    <span class="rotate-arrow"></span>
+    <span class="rotate-phone landscape"></span>
+  </div>
+  <span>Rotate your device to landscape to play</span>
+</div>
 <div id="front" popover="manual" role="dialog" aria-label="Hired Guns main menu">
 <canvas width="640" height="400" aria-hidden="true" hidden></canvas>
 <button aria-label="Training" data-group="Training"></button><button aria-label="Full campaign game" data-group="Campaign"></button>
