@@ -191,9 +191,10 @@ export async function hudGraphics(load, palette, equipment, level, prefix) {
       ctx.restore();
       ctx.drawImage(frames[0],0,0);
       ctx.drawImage(compass[p.dir],112,9);
-      if(panel.throwPower!==undefined && p.held && equipment.items[p.held.id].category===21){
+      const power=panel.touchPower??panel.throwPower;
+      if(power!==undefined && p.held && equipment.items[p.held.id].category===21){
         ctx.fillStyle='#000';ctx.fillRect(84,89,59,8);
-        text(ctx,'THROW '+(panel.throwPower+1)+'/4',86,90);
+        text(ctx,'THROW '+(power+1)+'/4',86,90);
       }
     }
     ctx.save();

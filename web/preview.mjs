@@ -662,7 +662,52 @@ async function start() {
         }
       };
     }
-    panelTouches.set(canvas,beginPanelTouch);
+    function beginHandheldTouch(point,time){
+      const tap=beginPanelTouch(point,time);
+      if(i!==selected || !p.fitness || p.exited) return {finish:tap};
+      const panel=panels[i],mode=panel.mode,zone=region(point);
+      const rect=canvas.getBoundingClientRect();
+      const x=(point.clientX-rect.left)*160/rect.width,y=(point.clientY-rect.top)*103/rect.height;
+      const active=()=>i===selected && panel.mode===mode && p.fitness && !p.exited && !paused() && !outcome;
+      if(mode===0 && zone?.[5]>=26 && zone[5]<=29){
+        const id=p.held.id,stepMs=250;
+        panel.touchPower=0;draw(false);
+        const timers=[1,2,3].map(n=>setTimeout(()=>{
+          if(active() && p.held?.id===id){panel.touchPower=n;draw(false);}
+        },n*stepMs));
+        return {finish(end){
+          timers.forEach(clearTimeout);
+          delete panel.touchPower;
+          if(end && active() && p.held?.id===id && region(end.point)?.[5]>=26 && region(end.point)?.[5]<=29){
+            activate(end.point,29-Math.min(3,Math.floor((end.time-time)/stepMs)));
+          }
+          draw(false);
+        }};
+      }
+      const store=mode===1 && x>=0 && x<66 && y>=18 && y<94;
+      const map=mode===2 && scannerType(p) && x>=13 && x<141 && y>=16 && y<95;
+      if(!store && !map) return {finish:tap};
+      let lastX=point.clientX,lastY=point.clientY,dragged=false;
+      function move(t){
+        if(!active()) return;
+        if(Math.hypot(t.clientX-point.clientX,t.clientY-point.clientY)>12) dragged=true;
+        if(!dragged) return;
+        const stepX=rect.width*16/160,stepY=rect.height*(store?14:16)/103;
+        const dx=map?Math.trunc((t.clientX-lastX)/stepX):0,dy=Math.trunc((t.clientY-lastY)/stepY);
+        lastX+=dx*stepX;lastY+=dy*stepY;
+        function scroll(action,count){
+          for(let n=0;n<Math.abs(count);n++){
+            if(room) onlineCommand?.(i,action);else act(action,false,i);
+          }
+        }
+        scroll(dx>0?'Left':'Right',dx);
+        scroll(dy>0?'Forward':'Back',dy);
+      }
+      return {move,finish(end){
+        if(end && active()){move(end.point);if(!dragged) tap(end);}
+      }};
+    }
+    panelTouches.set(canvas,beginHandheldTouch);
     let contact;
     button.onpointerdown=e=>{
       if(e.button!==0 && e.button!==2) return;
@@ -991,18 +1036,19 @@ async function start() {
         if(!beginPanel && !pad.contains(target)) continue;
         e.preventDefault();
         if(target.disabled || [...contacts.values()].some(press=>press.target===target)) continue;
-        const finish=beginPanel?beginPanel(touch,e.timeStamp):beginPadPress(target);
-        contacts.set(touch.identifier,{target,x:touch.clientX,y:touch.clientY,finish});
+        const gesture=beginPanel?beginPanel(touch,e.timeStamp):{finish:beginPadPress(target)};
+        contacts.set(touch.identifier,{target,x:touch.clientX,y:touch.clientY,...gesture});
       }
     },{passive:false});
     function matchesPress(touch,press){
-      return touchTarget(touch)===press.target && (!panelTouches.has(press.target) ||
+      return touchTarget(touch)===press.target && (press.move || !panelTouches.has(press.target) ||
         Math.hypot(touch.clientX-press.x,touch.clientY-press.y)<=12);
     }
     document.addEventListener('touchmove',e=>{
       for(const touch of e.changedTouches){
         const press=contacts.get(touch.identifier);
         if(press && !matchesPress(touch,press)) finishContact(touch.identifier);
+        else press?.move?.(touch);
       }
     });
     for(const type of ['touchend','touchcancel']) document.addEventListener(type,e=>{

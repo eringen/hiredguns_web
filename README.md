@@ -100,7 +100,7 @@ to the room. Empty rooms expire after two minutes. Disk saves are single-player.
 
 Tap the original view regions to walk, turn, strafe, or interact. Hold a region
 for about half a second and release to use its right-click action, such as
-pulling in the center of the view. When standing on an item, tap its lower-left icon or the **Use** button (now labeled **Pick up**) to put it in your pack. Drag away to cancel the tap.
+pulling in the center of the view. When standing on an item, tap its lower-left icon or the **Use** button (now labeled **Pick up**) to put it in your pack. Slide the item list up or down in Store, or drag an active DTS map in either direction. With a hand grenade equipped, hold the center throw area to charge from 1/4 to 4/4, then release to throw. Drag away to cancel the throw.
 
 On phones and tablets, rotate to landscape. Your active character fills the large view on the left. In solo play, tap a teammate’s smaller view to select them. In multiplayer, each device enlarges its own character. Use the left pad to walk forward, walk backward, or turn. Hold the horizontal arrows on the right to strafe. Both thumbs can act at once. Hold **Fire** for repeated bursts,
 use **Pull / reload** to pull a block or reload, and tap **Throw power** to

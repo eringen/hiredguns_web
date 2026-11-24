@@ -79,7 +79,8 @@ html.handheld #save-name{font-size:16px}
   html.handheld{--mobile-scale:.8}
   html.handheld :is(#front,#setup,#death,#briefing){scale:var(--mobile-scale)}
   body.touch-play{--key-size:clamp(44px,12dvh,56px);--pad-inset:12px}
-  html:not(.show-details) body.mission.touch-play > aside{position:absolute;top:env(safe-area-inset-top,0px);left:50%;transform:translateX(-50%);width:max-content;max-width:100%;text-align:center;z-index:1;background:#101416d9}
+  html:not(.show-details) body.mission.touch-play > aside{position:absolute;top:env(safe-area-inset-top,0px);left:50%;transform:translateX(-50%);width:max-content;max-width:100%;text-align:center;z-index:1;background:#101416d9;pointer-events:none}
+  body.touch-play > aside :is(button,input,a){pointer-events:auto}
   body.touch-play.mission #touch-pad:not([hidden]){display:block;position:absolute;inset:0;z-index:2;pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
   html:not(.show-details) body.mission.touch-play{
     grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto minmax(0,1fr);
