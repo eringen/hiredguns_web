@@ -1,46 +1,32 @@
-import {hudFont} from './hud.mjs';
+import {hudFont,loadHudFont} from './hud.mjs';
 import {worldMap} from './world-map.mjs';
 // Draw the mission screens at the CD32 front-end resolution. Transparent buttons
 // give the bitmap controls keyboard, touch and screen-reader input.
 export async function missionMenu(dialog,load,state) {
   const get=id=>document.getElementById(id),canvas=get('mission-screen'),ctx=canvas.getContext('2d');
   async function art(name) {const image=new Image();image.src='art/'+name+'.png';await image.decode();return image;}
-  const [rock,rosterRock,cursor,map,panel,flag,cross,strip,dimStrip,empty,faces,font,big,worldFont,colors,gameFont,fill,viewPalette]=await Promise.all([
+  async function fontArt(name){
+    const [image,meta]=await Promise.all([art(name),fetch('art/'+name+'.json').then(r=>r.json())]);
+    return {...meta,image};
+  }
+  const [rock,rosterRock,cursor,map,panel,flag,cross,strip,dimStrip,empty,faces,font,big,worldFont,gameFont,fillLine,viewPalette]=await Promise.all([
     ...['front-rock','roster-rock0','front-cursor','world','map-panel0','map-flag0','map-cross0','face-strip0','face-strip-dim0','empty-face0'].map(art),
-    Promise.all(Array.from({length:12},(_,i)=>art('portrait'+i))),load('menu-font.bin'),load('menu-title.bin'),load('world-font.bin'),
-    fetch('art/front-colors.json').then(r=>r.json()),load('hud-font.bin'),load('Fill.bin'),load('view-palette.bin')
+    Promise.all(Array.from({length:12},(_,i)=>art('portrait'+i))),fontArt('menu-font'),fontArt('menu-title'),fontArt('world-font'),
+    loadHudFont(),art('file-fill'),fetch('art/file-colors.json').then(r=>r.json())
   ]);
-  function letters(data,worldText=false,target=ctx) {
-    const v=new DataView(data.buffer),start=v.getUint32(0),w=v.getUint16(4),h=v.getUint16(6),mask=v.getUint16(8),planes=v.getUint16(10),stride=w*h/8;
-    const sheet=document.createElement('canvas');sheet.width=96*w;sheet.height=h;
-    const gc=sheet.getContext('2d'),rgba=gc.createImageData(sheet.width,h);
-    for(let g=0;g<96;g++) for(let i=0;i<w*h;i++) {
-      const pos=start+g*stride*planes+(i>>3),bit=128>>(i&7);
-      if(!(data[pos+mask*stride]&bit)) continue;
-      let color=0;for(let n=0;n<(worldText?2:3);n++) if(data[pos+n*stride]&bit) color|=1<<n;
-      const off=(Math.floor(i/w)*sheet.width+g*w+i%w)*4;
-      rgba.data.set(worldText?[[0,0,0],[255,255,255],[170,170,170],[102,102,102]][color]:colors.palette.slice(color*3,color*3+3),off);rgba.data[off+3]=255;
-    }
-    gc.putImageData(rgba,0,0);
+  function letters(font,worldText=false,target=ctx) {
+    const {image:sheet,width:w,height:h,widths}=font;
     return (str,cx,y,scale,max=628,left=false,yscale=scale)=>{
       const glyphs=[...str].map(c=>Math.min(95,Math.max(0,c.charCodeAt(0)-32)));
-      const width=glyphs.reduce((n,g)=>n+data[20+g],0);scale=Math.min(scale,max/(width||1));
+      const width=glyphs.reduce((n,g)=>n+(widths[g]||0),0);scale=Math.min(scale,max/(width||1));
       let x=left?cx:cx-width*scale/2;
-      for(const g of glyphs){target.drawImage(sheet,g*w,0,w,h,Math.round(x),y,w*scale,h*yscale);x+=data[20+g]*scale;}
+      for(const g of glyphs){target.drawImage(sheet,g*w,0,w,h,Math.round(x),y,w*scale,h*yscale);x+=(widths[g]||0)*scale;}
     };
   }
   const gameText=hudFont(gameFont);
-  const fillLine=document.createElement('canvas');fillLine.width=320;fillLine.height=2;
-  const lineCtx=fillLine.getContext('2d'),line=lineCtx.createImageData(320,2);
-  for(let i=0;i<640;i++){
-    let ink=0;
-    for(let p=0;p<5;p++) ink|=((fill[32+p*80+(i>>3)]>>(7-i%8))&1)<<p;
-    line.data.set(viewPalette.subarray(3*ink,3*ink+3),4*i);line.data[4*i+3]=255;
-  }
-  lineCtx.putImageData(line,0,0);
   function fileText(value,x,y,pen=1){
-    if(x===null) x=160-Math.floor([...value].reduce((w,c)=>w+(gameFont[20+c.charCodeAt(0)-32] || 0),0)/2);
-    gameText(ctx,value,x,y,'rgb('+viewPalette.subarray(3*pen,3*pen+3).join(',')+')');
+    if(x===null) x=160-Math.floor([...value].reduce((w,c)=>w+(gameFont.widths[c.charCodeAt(0)-32] || 0),0)/2);
+    gameText(ctx,value,x,y,'rgb('+viewPalette.slice(3*pen,3*pen+3).join(',')+')');
   }
   const write=letters(font),title=letters(big),legend=letters(worldFont,true);
   const multiplayerLabel=get('multiplayer').querySelector('canvas').getContext('2d');

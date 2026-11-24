@@ -1,50 +1,30 @@
 // Front.s stores sprite positions in field lines and draws text in interlaced pixels.
 export async function openingCards(front, focusMenu) {
   const canvas=front.querySelector('canvas'), ctx=canvas.getContext('2d');
-  const atlas=new Image();
-  atlas.src='art/front-cards.png';
-  const [colors]=await Promise.all([fetch('art/front-colors.json').then(r=>r.json()),atlas.decode()]);
+  const cards=await Promise.all(Array.from({length:16},async (_,i)=>{
+    const image=new Image();image.src='art/front-cards-'+i+'.png';await image.decode();return image;
+  }));
   const {width,height}=canvas;
-  const scratch=document.createElement('canvas');
-  scratch.width=width;scratch.height=height;
-  const source=scratch.getContext('2d',{willReadFrequently:true});
-  const cards=[];
-  for(let y=0;y<atlas.height;y+=height) {
-    source.drawImage(atlas,0,y,width,height,0,0,width,height);
-    const rgba=source.getImageData(0,0,width,height).data;
-    const indices=new Uint8Array(width*height);
-    for(let i=0;i<indices.length;i++) indices[i]=rgba[i*4];
-    cards.push(indices);
-  }
-  const lookup=([r,g,b])=>Uint8ClampedArray.from(colors.palette,(v,i)=>{
-    if(i<48) return v;
-    return (Math.min(15,(v>>4)+[r,g,b][i%3])<<4)|(v&15);
-  });
-  const normal=lookup([0,0,0]), bands=colors.bands.map(lookup);
-  const pixels=ctx.createImageData(width,height);
+  const cardCount=cards[0].height/height;
   const waits=[5,9,13,16,19,22,24,26,28,30,31,32,33,34,35,36];
   let card=2,target=2,timer,frame,afterScan,scanning=false;
   function paint(stops=[],erased=0) {
     let band=-1;
     for(let y=0;y<height;y++) {
       while(band+1<stops.length && y>=(stops[band+1]-40)*2) band++;
-      const palette=bands[band]??normal;
-      const indices=y>=80 && y<erased?cards[0]:cards[card];
-      for(let i=y*width,end=i+width;i<end;i++) {
-        const color=indices[i]*3,at=i*4;
-        pixels.data[at]=palette[color];pixels.data[at+1]=palette[color+1];
-        pixels.data[at+2]=palette[color+2];pixels.data[at+3]=255;
-      }
+      const atlas=cards[band+1]??cards[0];
+      const index=y>=80 && y<erased?0:card;
+      ctx.drawImage(atlas,0,index*height+y,width,1,0,y,width,1);
     }
-    ctx.putImageData(pixels,0,0);
   }
+
   function display(next) {
     card=next;target=next;scanning=false;
     front.classList.remove('scanning');
     front.classList.toggle('credits',card>=2);
     paint();
     if(card===1) focusMenu();
-    else if(card>=2) timer=setTimeout(()=>scan(card+1===cards.length?2:card+1),card===3?8020:4020);
+    else if(card>=2) timer=setTimeout(()=>scan(card+1===cardCount?2:card+1),card===3?8020:4020);
   }
   function scan(next) {
     clearTimeout(timer);

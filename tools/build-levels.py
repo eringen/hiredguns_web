@@ -4,6 +4,7 @@ import re
 import shutil
 import struct
 import subprocess
+import zlib
 from game_art import cut_sheet, cut_item_bobs, unpack_figure
 from pathlib import Path
 from mission_loading import build_briefings
@@ -280,3 +281,44 @@ info_offset=struct.unpack_from('>I',window_data,20)[0]
 window_sheet=(root/'Data/GameFast.dat/Windows.ilbm').read_bytes()
 cmap=window_sheet.index(b'CMAP')+8
 (out/'window-palette.bin').write_bytes(window_sheet[cmap:cmap+int.from_bytes(window_sheet[cmap-4:cmap],'big')])
+# Store the item-information panel as an indexed PNG.
+info = window_data[info_offset+18:]
+colors = window_sheet[cmap:cmap+int.from_bytes(window_sheet[cmap-4:cmap], 'big')]
+rows = bytearray()
+for y in range(79):
+    rows.append(0)
+    for x in range(80):
+        pixel = y * 80 + x
+        rows.append(sum(((info[790 * plane + pixel // 8] >> (7 - pixel % 8)) & 1) << plane
+                        for plane in range(5)))
+def png_chunk(tag, data):
+    return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data))
+(out/'art/info-panel.png').write_bytes(
+    b'\x89PNG\r\n\x1a\n' +
+    png_chunk(b'IHDR', struct.pack('>IIBBBBB', 80, 79, 8, 3, 0, 0, 0)) +
+    png_chunk(b'PLTE', colors) + png_chunk(b'IDAT', zlib.compress(rows)) + png_chunk(b'IEND', b''))
+
+# Convert static HUD sprites into transparent PNGs during the build.
+view_colors = (out/'view-palette.bin').read_bytes()
+for name in ['Icon1', 'Icon2', 'Icon3', 'Icon4', 'Locked', 'Locked2', 'Using',
+             'TooHeavy', 'NoRoom', 'Drowning', 'Poisoned', 'Invalid']:
+    data = (out / (name + '.bin')).read_bytes()
+    width, height = struct.unpack_from('>HH', data, 18)
+    start = struct.unpack_from('>I', data, 28)[0]
+    planes = 5 if name.startswith('Icon') else 4
+    masked = not name.startswith('Icon') and data[9] == 4
+    stride = width * height // 8
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)
+        for x in range(width):
+            pixel = y * width + x
+            pos, bit = start + pixel // 8, 7 - pixel % 8
+            index = sum(((data[pos + plane * stride] >> bit) & 1) << plane for plane in range(planes))
+            opaque = not masked or bool(data[pos + planes * stride] & (1 << bit))
+            rows.extend(view_colors[index*3:index*3+3])
+            rows.append(255 if opaque else 0)
+    (out/'art'/('hud-'+name+'.png')).write_bytes(
+        b'\x89PNG\r\n\x1a\n' +
+        png_chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
+        png_chunk(b'IDAT', zlib.compress(rows)) + png_chunk(b'IEND', b''))

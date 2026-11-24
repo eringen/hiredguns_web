@@ -1,129 +1,42 @@
 import {physique} from './psionics.mjs';
 import {fireSprites} from './fire-sprites.mjs';
 import {mapTile,scannerType} from './dts.mjs';
+export async function loadHudFont() {
+  const [meta,image]=await Promise.all([fetch('art/hud.json').then(r=>r.json()),loadImage('art/hud-font.png')]);
+  return {image,widths:meta.fontWidths};
+}
+async function loadImage(path) { const image=new Image();image.src=path;await image.decode();return image; }
 export function hudFont(font){
-  const fontStart = new DataView(font.buffer).getUint32(0);
+  const tinted=new Map();
   return function text(ctx,value,x,y,color='#e2d7b9') {
-    ctx.fillStyle=color;
-    for(const char of String(value)) {
-      const n=char.charCodeAt(0)-32;
-      if(n<0 || n>=95) continue;
-      for(let row=0;row<6;row++) {
-        const pos=fontStart+n*12+row*2;
-        const mask=font[pos]*256+font[pos+1];
-        for(let col=0;col<16;col++) if(mask & (32768>>col)) ctx.fillRect(x+col,y+row,1,1);
-      }
-      x+=font[20+n];
+    if(!tinted.has(color)) {
+      const c=document.createElement('canvas');c.width=font.image.width;c.height=6;
+      const gc=c.getContext('2d');gc.drawImage(font.image,0,0);gc.globalCompositeOperation='source-in';gc.fillStyle=color;gc.fillRect(0,0,c.width,6);tinted.set(color,c);
     }
-  }
+    for(const char of String(value)) {const n=char.charCodeAt(0)-32;if(n<0||n>=95)continue;ctx.drawImage(tinted.get(color),n*16,0,16,6,x,y,16,6);x+=font.widths[n];}
+  };
 }
 // GameFast.dat/Windows.s and Drawviews.s use four interchangeable 160×103 windows.
 export async function hudGraphics(load, palette, equipment, level, prefix) {
-  async function image(path) {
-    const img = new Image();
-    img.src=path;
-    await img.decode();
-    return img;
-  }
-  const [frames,font,compasses] = await Promise.all([
-    Promise.all([0,1,2,3].map(i=>image('art/window'+i+'.png'))),
-    load('hud-font.bin'),
-    Promise.all(Array.from('nesw',dir=>load('compass-'+dir+'.bin')))
+  const image=loadImage;
+  const meta=await fetch('art/hud.json').then(r=>r.json());
+  const [frames,font,compass,infoPanel,teamLights]=await Promise.all([
+    Promise.all([0,1,2,3].map(i=>image('art/window'+i+'.png'))),loadHudFont(),
+    Promise.all(Array.from('nesw',d=>image('art/compass-'+d+'.png'))),image('art/info-panel.png'),
+    Promise.all(['LeaderOff','Leader'].map(n=>image('art/'+n+'.png')))
   ]);
-  const [blocks,...lines]=await Promise.all([prefix+'MapBlocks.bin','VertLine.bin','HorizLine.bin','Rotations.bin'].map(load));
-  const tiles=new Map();
-  function tile(id,lit) {
-    const key=id+(lit?64:0);
-    if (!tiles.has(key)) {
-      const c=document.createElement('canvas');
-      c.width=c.height=16;
-      const ctx=c.getContext('2d'), pixels=ctx.createImageData(16,16);
-      for(let i=0;i<256;i++) {
-        let color=0;
-        for(let plane=0;plane<4;plane++) {
-          color|=((blocks[18+id*128+plane*32+(i>>3)]>>(7-(i&7)))&1)<<plane;
-        }
-        if(lit && palette.length>=96) color+=16;
-        pixels.data.set(palette.subarray(color*3,color*3+3),i*4);
-        pixels.data[i*4+3]=255;
-      }
-      ctx.putImageData(pixels,0,0);
-      tiles.set(key,c);
-    }
-    return tiles.get(key);
-  }
-  const indicators=lines.map((bytes,i)=>Array.from({length:i===2?4:1},(_,j)=>planar(bytes,18+j*14,4,true)));
-  const infoBytes=await load('info-panel.bin');
-  const infoPanel=document.createElement('canvas');infoPanel.width=80;infoPanel.height=79;
-  const infoCtx=infoPanel.getContext('2d'), infoImage=infoCtx.createImageData(80,79);
-  const windowPalette=await load('window-palette.bin');
-  for(let i=0;i<80*79;i++){
-    let color=0;for(let plane=0;plane<5;plane++) color|=((infoBytes[790*plane+(i>>3)]>>(7-i%8))&1)<<plane;
-    infoImage.data.set(windowPalette.subarray(color*3,color*3+3),4*i);infoImage.data[4*i+3]=255;
-  }
-  infoCtx.putImageData(infoImage,0,0);
-  const items = new Map();
-  const text=hudFont(font);
-  function planar(bytes,offset,count,masked) {
-    const data=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-    const w=data.getUint16(offset), h=data.getUint16(offset+2), start=data.getUint32(offset+10);
-    const c=document.createElement('canvas');c.width=w;c.height=h;
-    const ctx=c.getContext('2d'), pixels=ctx.createImageData(w,h), stride=w*h/8;
-    for(let p=0;p<w*h;p++) {
-      const b=start+(p>>3), bit=1<<(7-(p&7));
-      if(masked && !(bytes[b+count*stride]&bit)) continue;
-      let idx=0;
-      for(let k=0;k<count;k++) if(bytes[b+k*stride]&bit) idx|=1<<k;
-      pixels.data.set(palette.subarray(idx*3,idx*3+3),p*4);
-      pixels.data[p*4+3]=255;
-    }
-    ctx.putImageData(pixels,0,0);
-    return c;
-  }
-  const compass=compasses.map(bytes=>planar(bytes,18,5,true));
-  const rip=await load('Rip.bin');
-  const mia=document.createElement('canvas');
-  const record=new DataView(rip.buffer,rip.byteOffset,rip.byteLength);
-  mia.width=record.getUint16(18);mia.height=record.getUint16(20);
-  const miaCtx=mia.getContext('2d'),ink=record.getUint32(28);
-  const teamLights=await Promise.all(['LeaderOff','Leader'].map(async name=>{
-    const data=await load(name+'.bin');
-    const light=document.createElement('canvas');light.width=16;light.height=7;
-    const gc=light.getContext('2d'),image=gc.createImageData(16,7);
-    for(let i=0;i<112;i++){
-      const at=18+(i>>3),bit=128>>(i&7);if(!(data[at+70]&bit)) continue;
-      let color=0;for(let n=0;n<5;n++) if(data[at+n*14]&bit) color|=1<<n;
-      image.data.set(windowPalette.subarray(3*color,3*color+3),4*i);image.data[4*i+3]=255;
-    }
-    gc.putImageData(image,0,0);return light;
-  }));
+  const windowPalette=Uint8Array.from(meta.windowPalette),items=new Map(),text=hudFont(font);
   const rgb=index=>'rgb('+windowPalette.subarray(index*3,index*3+3).join(',')+')';
-  miaCtx.fillStyle=rgb(21);
-  for(let i=0;i<mia.width*mia.height;i++) {
-    if(rip[ink+(i>>3)]&(128>>(i&7))) miaCtx.fillRect(i%mia.width,Math.floor(i/mia.width),1,1);
-  }
-  const exitBytes=await load('Exit.bin'),exitSprite=document.createElement('canvas');
-  const exitData=new DataView(exitBytes.buffer,exitBytes.byteOffset),exitStart=exitData.getUint32(28);
-  exitSprite.width=exitData.getUint16(18);exitSprite.height=exitData.getUint16(20);
-  const exitCtx=exitSprite.getContext('2d');exitCtx.fillStyle=rgb(21);
-  for(let n=0;n<exitSprite.width*exitSprite.height;n++)
-    if(exitBytes[exitStart+(n>>3)]&(128>>(n&7))) exitCtx.fillRect(n%exitSprite.width,Math.floor(n/exitSprite.width),1,1);
-  const icons=await Promise.all([1,2,3,4].map(async n=>planar(await load('Icon'+n+'.bin'),18,5,false)));
-  const fire=fireSprites(await load('fire-effects.bin'));
-  const warnings={};
-  for(const name of ['Locked','Locked2','Using','TooHeavy','NoRoom','Drowning','Poisoned','Invalid']) {
-    const bytes=await load(name+'.bin');
-    warnings[name]=planar(bytes,18,4,bytes[9]===4);
-  }
-  const claws={};
-  for(const name of ['Claws','BigClaws']) {
-    const bytes=await load(name+'.bin'),data=new DataView(bytes.buffer,bytes.byteOffset);
-    const canvas=document.createElement('canvas');canvas.width=data.getUint16(18);canvas.height=data.getUint16(20);
-    const ctx=canvas.getContext('2d'),start=data.getUint32(28);
-    ctx.fillStyle='rgb('+palette.subarray(27,30).join(',')+')';
-    for(let i=0;i<canvas.width*canvas.height;i++) if(bytes[start+(i>>3)]&(128>>(i&7))) ctx.fillRect(i%canvas.width,Math.floor(i/canvas.width),1,1);
-    claws[name]=canvas;
-  }
+  const style=prefix.split('/').filter(Boolean).pop();
+  const tiles=await Promise.all([0,1].map(lit=>Promise.all(Array.from({length:64},(_,id)=>image('art/map-'+style+'-'+id+'-'+lit+'.png')))));
+  const tile=(id,lit)=>tiles[Number(!!lit)][id];
+  const indicators=await Promise.all(['VertLine','HorizLine','Rotations'].map((name,i)=>Promise.all(Array.from({length:i===2?4:1},(_,j)=>image('art/'+name+j+'.png')))));
+  const [mia,exitSprite]=await Promise.all(['Rip','Exit'].map(n=>image('art/'+n+'.png')));
+  const icons=await Promise.all([1,2,3,4].map(n=>image('art/hud-Icon'+n+'.png')));
+  const fire=await fireSprites(image,meta.fire);
+  const warnings={},claws={};
+  await Promise.all(['Locked','Locked2','Using','TooHeavy','NoRoom','Drowning','Poisoned','Invalid'].map(async n=>warnings[n]=await image('art/hud-'+n+'.png')));
+  await Promise.all(['Claws','BigClaws'].map(async n=>claws[n]=await image('art/'+n+'.png')));
   const offline=document.createElement('canvas');
   offline.width=160;offline.height=103;
   const offlineCtx=offline.getContext('2d');offlineCtx.drawImage(frames[2],0,0);
@@ -157,11 +70,8 @@ export async function hudGraphics(load, palette, equipment, level, prefix) {
     ctx.putImageData(frame.image,13,16);
   }
   const faces=new Map();
-  async function preload(players,figures) {
-    players.forEach((p,i)=>{
-      const bytes=figures[i].subarray(14224);
-      faces.set(p.character.id,[planar(bytes,18,4,true),planar(bytes,32,4,true)]);
-    });
+  async function preload(players) {
+    await Promise.all(players.map(async p=>faces.set(p.character.id,await Promise.all([0,1].map(i=>image('art/figure'+p.character.id+'-face'+i+'.png'))))));
     await Promise.all([...new Set(equipment.items.filter(Boolean).map(item=>item.image))].map(async id=>{
       items.set(id,await image('art/item'+id+'.png'));
     }));
@@ -170,11 +80,11 @@ export async function hudGraphics(load, palette, equipment, level, prefix) {
     ctx.clearRect(0,0,160,103);
     if(!p.fitness) {
       ctx.fillStyle=rgb(5);ctx.fillRect(0,0,160,103);
-      ctx.drawImage(mia,23+record.getInt16(22),22+record.getInt16(24));return;
+      ctx.drawImage(mia,23+meta.Rip.x,22+meta.Rip.y);return;
     }
     if(p.exited) {
       ctx.fillStyle=rgb(5);ctx.fillRect(0,0,160,103);
-      ctx.drawImage(exitSprite,exitData.getInt16(22),22+exitData.getInt16(24));
+      ctx.drawImage(exitSprite,meta.Exit.x,22+meta.Exit.y);
       text(ctx,'PRESS F'+[1,3,2,4][playerIndex],32,80);text(ctx,'TO RETURN',32,87);return;
     }
     ctx.drawImage(frames[mode===6?1:mode],0,0);
@@ -217,7 +127,7 @@ export async function hudGraphics(load, palette, equipment, level, prefix) {
         const def=equipment.items[p.held.id];
         const [first,second,ammo,wear]=def.labels;
         [first,second,ammo.replace(/^X+/,p.held.ammo),wear.replace(/^X+/,Math.floor(p.held.damage*25600/(def.maxDamage||1)))].forEach((line,i)=>{
-          const width=[...line].reduce((w,c)=>w+(font[20+c.charCodeAt(0)-32]??0),0);
+          const width=[...line].reduce((w,c)=>w+(font.widths[c.charCodeAt(0)-32]??0),0);
           text(ctx,line,116-Math.floor(width/2),[22,29,76,83][i]);
         });
       }
@@ -277,5 +187,5 @@ export async function hudGraphics(load, palette, equipment, level, prefix) {
     if(p.healthFrames) fire.health(ctx);
 
   }
-  return {preload,draw,drawStatic,text,width:value=>[...value].reduce((w,c)=>w+(font[20+c.charCodeAt(0)-32]??0),0)};
+  return {preload,draw,drawStatic,text,width:value=>[...value].reduce((w,c)=>w+(font.widths[c.charCodeAt(0)-32]??0),0)};
 }

@@ -1,7 +1,8 @@
+import {loadSpriteSheet} from './sprite-png.mjs';
 import {advanceEffects,syncEffects} from './effects.mjs';
 import {fieldAction,keyAction,followLeader} from './controls.mjs';
 import {agePowers} from './psionics.mjs';
-import {fieldAnimation,fieldInk} from './field.mjs';
+import {fieldAnimation} from './field.mjs';
 import {missionMenu} from './mission-menu.mjs';
 import {openingCards} from './front.mjs';
 import {missionSky} from './sky.mjs';
@@ -49,58 +50,6 @@ async function load(path) {
   const response = await fetch(path);
   if (!response.ok) throw new Error('Could not load ' + path);
   return new Uint8Array(await response.arrayBuffer());
-}
-
-// Each projected sprite has four colour planes followed by the blitter mask.
-function spriteSheet(bytes, palette, water=false, count=67, planes=[0,1,2,3]) {
-  const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const images = new Map();
-  return Array.from({length:count}, (_, i) => {
-    const offset = 18 + i * 14;
-    const [w,h,x,y,control] = Array.from({length:5}, (_, j) => data.getInt16(offset+2*j));
-    if (!w || !h || control === 3) return null;
-    const start = data.getUint32(offset+10);
-    const key = [start,w,h].join(',');
-    if (images.has(key)) return {canvas:images.get(key),x,y,control};
-    const stride = w*h/8;
-    const canvas = document.createElement('canvas');
-    canvas.width=w; canvas.height=h;
-    // The scene compositor reads these pixels for palette masks. Keep its sprite sources in CPU-backed canvases.
-    const ctx = canvas.getContext('2d',{willReadFrequently:true});
-    const pixels = ctx.createImageData(w,h);
-    for (let p=0;p<w*h;p++) {
-      const byte=start+(p>>3), bit=7-(p&7);
-      if (!(bytes[byte+(water?0:planes.length*stride)] & (1<<bit))) continue;
-      let index=0;
-      for (let plane=0;plane<planes.length;plane++) index |= ((bytes[byte+plane*stride]>>bit)&1)<<planes[plane];
-      if(water==='field') {pixels.data.set(fieldInk,4*p);pixels.data[4*p+3]=255;}
-      else if(water==='foam') {
-        pixels.data.set(palette.subarray(51,54),4*p);pixels.data[4*p+3]=255;
-      } else if(water) pixels.data[4*p+3]=255;
-      else {
-        pixels.data.set(palette.subarray(3*index,3*index+3),4*p);
-        pixels.data[4*p+3]=255;
-      }
-    }
-    ctx.putImageData(pixels,0,0);
-    if(!water && palette.length===192 && planes.length===4) {
-      let lit;
-      canvas.illuminated=()=>{
-        if(lit) return lit;
-        lit=document.createElement('canvas');lit.width=w;lit.height=h;
-        for(let p=0;p<w*h;p++) {
-          if(!pixels.data[4*p+3]) continue;
-          let idx=32;
-          for(let n=0;n<4;n++) idx|=((bytes[start+(p>>3)+n*stride]>>(7-(p&7)))&1)<<n;
-          pixels.data.set(palette.subarray(idx*3,idx*3+3),4*p);
-        }
-        lit.getContext('2d',{willReadFrequently:true}).putImageData(pixels,0,0);return lit;
-      };
-    }
-    if(water===true) canvas.waterMask=pixels.data;
-    images.set(key,canvas);
-    return {canvas,x,y,control};
-  });
 }
 
 // Tables.s paints each row from its outside edges towards its centre.
@@ -371,10 +320,11 @@ async function start() {
   resume.hidden = false;
   menu.onclick = openMenu;
   const prefix = 'styles/' + entry.style + '/';
-  const [map,palette,stone,grass,bank,manifest] = await Promise.all([
-    'maps/' + entry.id + '.map', 'view-palette.bin', prefix+'Stone.bin', prefix+'Grass.bin',prefix+'terrain.bin',prefix+'terrain.json'
+  const [map,palette,manifest] = await Promise.all([
+    'maps/' + entry.id + '.map', 'view-palette.bin', prefix+'terrain.json'
   ].map(load));
   const level=readLevel(map);
+  level.artId=entry.id;
   const skies=await missionSky(load,level);
   const wetColors=new Map(),litColors=new Map();
   for(let i=63;i>=0;i--) {
@@ -425,17 +375,12 @@ async function start() {
     ctx.putImageData(image,left,top);
     return deferred;
   }
-  const walls=spriteSheet(stone,palette), floors=spriteSheet(grass,palette);
+  const [walls,floors]=await Promise.all(['Stone','Grass'].map(name=>loadSpriteSheet(prefix+name)));
   const terrain = {};
-  let nearSign;
-  for (const [name,[offset,size]] of Object.entries(JSON.parse(new TextDecoder().decode(manifest)))) {
-    const sheet=bank.subarray(offset,offset+size);
-    terrain[name] = spriteSheet(sheet,palette,name==='field'?'field':false);
-    if(name==='text'){
-      const view=new DataView(sheet.buffer,sheet.byteOffset,sheet.byteLength),header=18+41*14;
-      nearSign={bytes:sheet,start:view.getUint32(header+10),sprite:terrain.text[41]};
-    }
-  }
+  await Promise.all(Object.keys(JSON.parse(new TextDecoder().decode(manifest))).map(async name=>{
+    terrain[name]=await loadSpriteSheet(prefix+'terrain-'+name);
+  }));
+  const nearSign=terrain.text[41];
   const floorSheets = [floors,null,terrain.lift,terrain.puddle];
   const blocks = [walls,terrain.push,terrain.field,terrain.field,terrain.tree,terrain.field,terrain.field,terrain.hydraulic];
   // Drawviews.s block_rotations and aux_rotations use the same stair orientation table.
@@ -452,10 +397,10 @@ async function start() {
   }
   const [step,bump,reload] = await Promise.all(['Footstep.pcm','Bump.pcm','GunReload.pcm'].map(load));
   const boxes = Array.from({length:5},(_,i)=>terrain['container'+(i+1)]);
-  const [figureBytes,hud] = await Promise.all([
-    Promise.all(squad.map(id=>load('figure'+id+'.bin'))),hudGraphics(load,palette,equipment,level,prefix)
+  const [figures,hud]=await Promise.all([
+    Promise.all(squad.map(id=>Promise.all([0,1,2,3].map(dir=>loadSpriteSheet('figure'+id+'-'+dir))))),
+    hudGraphics(load,palette,equipment,level,prefix)
   ]);
-  const figures = figureBytes.map(bytes=>Array.from({length:4},(_,dir)=>spriteSheet(bytes.subarray(dir*3556,(dir+1)*3556),palette)));
   const effects=['','NewGun1','NewGun2','GunEmpty','GunReload','EggHatch','','Explosion','LaserCrack','Arc','Cast'];
   const samples={step,bump,reload};
   await Promise.all([...effects,...extraSamples].filter(Boolean).map(async name=>{samples[name]=await load(name+'.pcm');}));
@@ -467,7 +412,7 @@ async function start() {
     campaign.members?.forEach((member,i)=>Object.assign(players[i],member));
   }
 
-  await hud.preload(players,figureBytes);
+  await hud.preload(players);
   const motor=ambientAudio({DoorOpening:await load('DoorOpening.8svx'),Lift:await load('Lift.8svx')});
   function machineryVolume(key,base){
     const x=key%level.width,y=Math.floor(key/level.width)%level.depth,z=Math.floor(key/(level.width*level.depth));
@@ -503,11 +448,10 @@ async function start() {
   new MutationObserver(syncAtmos).observe(setup,{attributes:true,attributeFilter:['open']});
   window.addEventListener('pagehide',()=>{ambient.stop();motor.stop();});
   const radio=chatter(level,players,JSON.parse(new TextDecoder().decode(await load('chatter.json'))));
-  const waterSheets=await Promise.all([1,2,3,4].map(async n=>spriteSheet(await load('Water'+n+'.bin'),palette,true)));
-  const foam=spriteSheet(await load('Foam.bin'),palette,'foam',4);
-  const grenadeSheet=spriteSheet(await load('Grenade.bin'),palette);
-  const explosionPalette=await load('explosion-palette.bin');
-  const flameSheets=await Promise.all([1,2,3,4].map(async n=>spriteSheet(await load('expl'+n+'.bin'),explosionPalette,false,67,[0,3,5])));
+  const waterSheets=await Promise.all([1,2,3,4].map(async n=>loadSpriteSheet('Water'+n)));
+  const foam=await loadSpriteSheet('Foam');
+  const grenadeSheet=await loadSpriteSheet('Grenade');
+  const flameSheets=await Promise.all([1,2,3,4].map(async n=>loadSpriteSheet('expl'+n)));
   let outcome='';
   let radioLine='',radioX=320,lastCore=0;
   const ticker=document.querySelector('#ticker'),ribbon=ticker.querySelector('canvas');
@@ -542,13 +486,12 @@ async function start() {
     machines.pad(p.x,p.y,p.floor,true);Object.assign(p,{x,y,floor});
     machines.pad(x,y,floor,false);sound('Teleport',683,players.indexOf(p)%2);
   });
-  const skeleton=spriteSheet(await load('Skeleton.bin'),palette);
+  const skeleton=await loadSpriteSheet('Skeleton');
   const remains=new Map(),monsterFigures=new Map(),attackFigures=new Map();
   await Promise.all(battle.species.map(async id=>{
-    const bytes=await load('Monster'+String(id).padStart(2,'0')+'.bin');
-    attackFigures.set(id,spriteSheet(bytes.subarray(16710),palette,false,1)[0]);
-    remains.set(id,spriteSheet(bytes.subarray(14224,16710),palette));
-    monsterFigures.set(id,Array.from({length:4},(_,dir)=>spriteSheet(bytes.subarray(dir*3556,(dir+1)*3556),palette)));
+    const name='Monster'+String(id).padStart(2,'0');
+    const [attack,dead,directions]=await Promise.all([loadSpriteSheet(name+'-attack'),loadSpriteSheet(name+'-remains'),Promise.all([0,1,2,3].map(dir=>loadSpriteSheet(name+'-'+dir)))]);
+    attackFigures.set(id,attack[0]);remains.set(id,dead);monsterFigures.set(id,directions);
   }));
   const pack = document.querySelector('#pack');
   const feedback = document.querySelector('#feedback');
@@ -558,7 +501,7 @@ async function start() {
   }
   const directions=[[0,-1],[1,0],[0,1],[-1,0]], projection=slots();
   const lightNeighbors=JSON.parse(new TextDecoder().decode(await load('light-neighbors.json')));
-  const lightMasks=await Promise.all([1,2,3].map(async n=>spriteSheet(await load('Light'+n+'.bin'),palette,true)));
+  const lightMasks=await Promise.all([1,2,3].map(async n=>loadSpriteSheet('Light'+n)));
   const litBlack=32,wetBlack=16;
   const visibility=JSON.parse(new TextDecoder().decode(await load('visibility.json')));
   const panels=players.map(()=>({mode:0,index:0,seen:new Set()}));
@@ -748,7 +691,7 @@ async function start() {
   function drawSign(ctx,id) {
     // Two OR-blitted planes of 48 by 40 pixels, centered on the near wall panel.
     const image=ctx.getImageData(48,22,48,40);
-    const {bytes,start,sprite}=nearSign,w=sprite.canvas.width,h=sprite.canvas.height,stride=w*h/8;
+    const sprite=nearSign,w=sprite.canvas.width,h=sprite.canvas.height,indices=sprite.canvas.colorIndices;
     for(let i=0;i<48*40;i++){
       const offset=id*480+(i>>3),mask=128>>(i&7);
       const ink=Number(!!(level.signs[offset]&mask))+2*Number(!!(level.signs[offset+240]&mask));
@@ -758,11 +701,8 @@ async function start() {
         if(x>=0 && x<w && y>=0 && y<2*h){
           // Colors 0 and 5 both display as black. Only the original bitplanes
           // identify which color the 68k OR will produce underneath the ink.
-          const pixel=(y<h?y:2*h-1-y)*w+x,at=start+(pixel>>3),bit=128>>(pixel&7);
-          if(bytes[at+4*stride]&bit){
-            base=0;
-            for(let n=0;n<4;n++) if(bytes[at+n*stride]&bit) base|=1<<n;
-          }
+          const pixel=(y<h?y:2*h-1-y)*w+x;
+          if(indices[4*pixel+3]) base=indices[4*pixel];
         }
         const index=base|ink;
         image.data.set(palette.subarray(3*index,3*index+3),dest);image.data[dest+3]=255;

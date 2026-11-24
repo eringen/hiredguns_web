@@ -9,7 +9,7 @@ combat, puzzles, and atmosphere. A map editor is out of scope.
 ## Current state
 
 Run `make source` once, then `make preview`. The preview build uses a C compiler,
-CMake, and FFmpeg with MP3 encoding to render the archived character-selection
+CMake, Python Pillow (install with `python3 -m pip install Pillow`), and FFmpeg with MP3 encoding to render the archived character-selection
 music. The first build downloads libxmp 4.6.2 and verifies its archive checksum.
 
 Start a campaign to select four of the twelve characters. Use Left and Right to slide the portrait strip and Enter to add the highlighted character. Backspace removes the last choice. Press Enter again when the team is complete. Training assigns Cheule, CIM, Rorian and Jenillee.
