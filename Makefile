@@ -85,3 +85,9 @@ build/preview/chselect.mp3 build/preview/front.mp3 build/preview/world.mp3 build
 	$(RM) "$@.pcm"
 
 preview-build: build/preview/chselect.mp3 build/preview/front.mp3 build/preview/world.mp3 build/preview/death.mp3 $(STATIC_TRACKS)
+
+.PHONY: isometric-build
+isometric-build:
+	sh tools/build-isometric.sh
+
+preview-build: isometric-build

@@ -9,7 +9,7 @@ import {missionSky} from './sky.mjs';
 import {chatter} from './chatter.mjs';
 import {combat} from './combat.mjs';
 import {machinery} from './machinery.mjs';
-import {scanTerrain,scrollMap,scannerType} from './dts.mjs';
+import {hideOccludedCells,scanTerrain,scrollMap,scannerType} from './dts.mjs';
 import {hudGraphics} from './hud.mjs';
 import {inventorySession} from './inventory.mjs';
 import {sourcePan,loadAudio,extraSamples,movementAudio,ambientAudio,environmentSound} from './samples.mjs';
@@ -748,14 +748,14 @@ async function start() {
     ctx.clearRect(0,0,144,84);
     if((level.cell(p.x,p.y,p.floor).contents>>>(24+p.dir))&1) ctx.drawImage(skies.views[p.dir],0,0);
     const [dx,dy]=directions[p.dir];
-    const cells=projection.map(({depth,dz,side})=>{
+    const cells=hideOccludedCells(projection.map(({depth,dz,side})=>{
       const x=p.x+depth*dx-side*dy,y=p.y+depth*dy+side*dx,z=p.floor+dz;
       return x>=0 && x<level.width && y>=0 && y<level.depth && z>=0 && z<level.height?level.cell(x,y,z):null;
-    });
+    }),visibility);
     for(const [slot,{depth,dz,side,index}] of projection.entries()){
       const x=p.x+depth*dx-side*dy, y=p.y+depth*dy+side*dx, z=p.floor+dz;
       const c=cells[slot];
-      if(!c) continue;
+      if(!c || (c.terrain & 128)) continue;
       const [,rear,lateral,below]=lightNeighbors[slot];
       const solid=cell=>cell?.blockType===0 || cell?.blockType===1;
       const lit=c.contents>>>31;
@@ -795,6 +795,7 @@ async function start() {
         if(s===terrain.field?.[index] || (s===figure && players[other].powers?.shield)) hasField=true;
         if(s===figure && (players[other].powers?.shield || players[other].psiFlash))
           canvas=silhouette(canvas,players[other].powers?.shield?'rgb(1,254,1)':'white');
+        if(s===monsterSprite && monster.hitFlash) canvas=silhouette(canvas,'white');
         const control=s.control===-1?Number(!!flame?.flip):s.control;
         if(canvas.waterMask) {
           const lighting=s===rearLight || s===sideLight || s===floorLight;

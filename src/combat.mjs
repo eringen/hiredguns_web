@@ -34,6 +34,7 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
   function hurtMonster(m,impact) {
     const def=equipment.monsters[m.type],damage=Math.floor(impact/def.physique)*100;
     m.fitness-=damage;
+    if(damage>0) m.hitFlash=2;
     if(m.fitness<0) {
       actors.splice(actors.indexOf(m),1);
       const c=level.cell(m.x,m.y,m.floor);
@@ -173,6 +174,7 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
   function tick() {
     ticks++;
     let changed=grenades.length>0;
+    for(const m of actors) if(m.hitFlash && --m.hitFlash===0) changed=true;
     for(const g of [...grenades]) advanceGrenade(g);
     for(const e of eggs) {
       if(e.open || e.time===4093 || e.time===4095) continue;
@@ -276,6 +278,8 @@ export function combat(level,equipment,inventory,play,sound=()=>{},onReveal=()=>
       if([1,4].includes(p.character.race)===(def.category===19)) {
         if(p.held.id===64) p.poison=0;
         p.fitness=Math.min(65535,p.fitness+def.fitnessBoost);p.held=null;
+        p.flashFrames=5;p.flashColor=def.flash;play(def.sample,def.period);
+        return true;
       }
       return;
     }

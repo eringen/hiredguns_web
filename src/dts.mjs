@@ -1,5 +1,15 @@
 // Drawviews.s scan_view, descan_view and window3. The visibility table is in
 // scan order (far to near), independent of the graphics index of each slot.
+export function hideOccludedCells(cells, rules) {
+  // scan_view replaces hidden terrain with bit 7 before testing the next cell.
+  // Keep the separate contents plane, as the CD32 renderer does for lighting.
+  cells.forEach((cell,i)=>{
+    if (cell && rules[i].some(group=>group.every(j=>cells[j]?.terrain & 64)))
+      cells[i]={...cell,terrain:128,floorType:null,blockType:null};
+  });
+  return cells;
+}
+
 export function scanTerrain(level, player, slots, rules, seen) {
   const [dx,dy] = [[0,-1],[1,0],[0,1],[-1,0]][player.dir];
   const cells = slots.map(({depth,side,dz}) => {
@@ -7,9 +17,8 @@ export function scanTerrain(level, player, slots, rules, seen) {
     if (x<0 || x>=level.width || y<0 || y>=level.depth || z<0 || z>=level.height) return null;
     return {key:(z*level.depth+y)*level.width+x, terrain:level.cell(x,y,z).terrain};
   });
-  cells.forEach((cell,i)=>{
+  hideOccludedCells(cells,rules).forEach((cell,i)=>{
     if (!cell) return;
-    if (rules[i].some(group=>group.every(j=>cells[j]?.terrain & 64))) cell.terrain=128;
     if (!slots[i].dz && !(cell.terrain & 128)) seen.add(cell.key);
   });
 }
