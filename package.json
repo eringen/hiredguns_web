@@ -1,0 +1,12 @@
+{
+  "name": "hired-guns-multiplayer",
+  "private": true,
+  "scripts": {
+    "multiplayer": "node tools/multiplayer-server.mjs",
+    "test:multiplayer": "node --test tools/test-multiplayer.mjs"
+  },
+  "dependencies": {
+    "three": "^0.187.0",
+    "ws": "8.23.0"
+  }
+}

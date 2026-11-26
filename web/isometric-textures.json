@@ -1,0 +1,162 @@
+{
+  "walls": {
+    "url": null,
+    "repeat": [
+      1,
+      1
+    ]
+  },
+  "floors": {
+    "url": null,
+    "repeat": [
+      1,
+      1
+    ]
+  },
+  "doors": {
+    "url": null,
+    "repeat": [
+      1,
+      1
+    ]
+  },
+  "metal": {
+    "url": null,
+    "roughness": 0.65
+  },
+  "water": {
+    "url": null,
+    "roughness": 0.2
+  },
+  "field": {
+    "url": null
+  },
+  "levels": {
+    "7": {
+      "walls": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0,
+          0,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      },
+      "floors": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0.5,
+          0,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      },
+      "doors": {
+        "url": "./isometric-textures/depot/06_blast_door_albedo.png",
+        "bump": "./isometric-textures/depot/06_blast_door_bump.png",
+        "specular": "./isometric-textures/depot/06_blast_door_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "metal": {
+        "url": "./isometric-textures/depot-atlas.png",
+        "region": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.85
+      },
+      "ground": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      },
+      "stairWalls": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0,
+          0,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      },
+      "stairTreads": {
+        "url": "./isometric-textures/depot/03_stairs_albedo.png",
+        "bump": "./isometric-textures/depot/03_stairs_bump.png",
+        "specular": "./isometric-textures/depot/03_stairs_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "stairRisers": {
+        "url": "./isometric-textures/depot/03_stairs_albedo.png",
+        "bump": "./isometric-textures/depot/03_stairs_bump.png",
+        "specular": "./isometric-textures/depot/03_stairs_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "landings": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0.5,
+          0,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      },
+      "elevator": {
+        "url": "./isometric-textures/depot/04_elevator_platform_albedo.png",
+        "bump": "./isometric-textures/depot/04_elevator_platform_bump.png",
+        "specular": "./isometric-textures/depot/04_elevator_platform_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "column": {
+        "url": "./isometric-textures/depot/05_column_albedo.png",
+        "bump": "./isometric-textures/depot/05_column_bump.png",
+        "specular": "./isometric-textures/depot/05_column_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "ceiling": {
+        "url": "./isometric-textures/depot/07_ceiling_conduits_albedo.png",
+        "bump": "./isometric-textures/depot/07_ceiling_conduits_bump.png",
+        "specular": "./isometric-textures/depot/07_ceiling_conduits_specular.png",
+        "bumpScale": 0.035,
+        "roughness": 0.8,
+        "metalness": 0
+      },
+      "caps": {
+        "url": "./isometric-textures/depot-courtyard-atlas.png",
+        "region": [
+          0,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "roughness": 0.9,
+        "weathering": true
+      }
+    }
+  }
+}
